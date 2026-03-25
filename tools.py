@@ -37,7 +37,11 @@ def fetch_hotels(city: str, max_price_per_night: float = None) -> str:
     Use this tool when the user asks about hotels, accommodation, or places to stay in a city.
     """
     db = _load_db()
-    results = [h for h in db["hotels"] if h["city"].lower() == city.lower()]
+    results = [
+        h for h in db["hotels"]
+        if h["city"].lower() == city.lower()
+        and h.get("availability", "").lower() != "unavailable"
+    ]
 
     if max_price_per_night is not None:
         results = [h for h in results if h["price_per_night"] <= max_price_per_night]

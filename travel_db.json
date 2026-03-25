@@ -40,21 +40,24 @@
       "name": "Hotel Ritz",
       "price_per_night": 450,
       "stars": 5,
-      "amenities": ["Spa", "Fine Dining"]
+      "amenities": ["Spa", "Fine Dining"],
+      "availability": "Available"
     },
     {
       "city": "Paris",
       "name": "EcoStay Paris",
       "price_per_night": 85,
       "stars": 2,
-      "amenities": ["Free WiFi"]
+      "amenities": ["Free WiFi"],
+      "availability": "Available"
     },
     {
       "city": "London",
       "name": "The Savoy",
       "price_per_night": 600,
       "stars": 5,
-      "amenities": ["Butler Service", "River View"]
+      "amenities": ["Butler Service", "River View"],
+      "availability": "Available"
     }
   ]
 }
