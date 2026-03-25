@@ -21,6 +21,7 @@ def fetch_flights(origin: str, destination: str) -> str:
         f for f in db["flights"]
         if f["origin"].lower() == origin.lower()
         and f["destination"].lower() == destination.lower()
+        and f.get("availability", "").lower() != "unavailable"
     ]
     if not results:
         return f"No flights found from {origin} to {destination}."
