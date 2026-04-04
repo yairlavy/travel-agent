@@ -1,3 +1,4 @@
+.env
 taenv/
 __pycache__/
 *.pyc

@@ -1,63 +1,29 @@
 {
   "flights": [
-    {
-      "origin": "London",
-      "destination": "Paris",
-      "airline": "AirFrance",
-      "price": 120,
-      "flight_number": "AF123",
-      "availability": "Available"
-    },
-    {
-      "origin": "New York",
-      "destination": "London",
-      "airline": "Virgin Atlantic",
-      "price": 550,
-      "flight_number": "VS001",
-      "availability": "Limited"
-    },
-    {
-      "origin": "London",
-      "destination": "Tokyo",
-      "airline": "JAL",
-      "price": 950,
-      "flight_number": "JL402",
-      "availability": "Available"
-    },
-     
-    {
-      "origin": "London",
-      "destination": "Paris",
-      "airline": "AirFrance",
-      "price": 400,
-      "flight_number": "sex",
-      "availability": "Available"
-    }
+    {"origin": "TLV", "destination": "Paris", "airline": "El Al", "price": 350, "flight_number": "LY321"},
+    {"origin": "TLV", "destination": "London", "airline": "British Airways", "price": 420, "flight_number": "BA164"},
+    {"origin": "London", "destination": "Tokyo", "airline": "JAL", "price": 890, "flight_number": "JL402"}
   ],
   "hotels": [
-    {
-      "city": "Paris",
-      "name": "Hotel Ritz",
-      "price_per_night": 450,
-      "stars": 5,
-      "amenities": ["Spa", "Fine Dining"],
-      "availability": "Available"
-    },
-    {
-      "city": "Paris",
-      "name": "EcoStay Paris",
-      "price_per_night": 85,
-      "stars": 2,
-      "amenities": ["Free WiFi"],
-      "availability": "Available"
-    },
-    {
-      "city": "London",
-      "name": "The Savoy",
-      "price_per_night": 600,
-      "stars": 5,
-      "amenities": ["Butler Service", "River View"],
-      "availability": "Available"
-    }
-  ]
+    {"city": "Paris", "name": "Hotel de Ville", "price_per_night": 140, "stars": 3},
+    {"city": "Paris", "name": "Luxury Palace", "price_per_night": 550, "stars": 5},
+    {"city": "London", "name": "The Savoy", "price_per_night": 600, "stars": 5},
+    {"city": "Tokyo", "name": "Shibuya Capsule", "price_per_night": 45, "stars": 2}
+  ],
+  "activities": [
+    {"city": "Paris", "name": "Louvre Museum", "category": "Culture", "price": 20},
+    {"city": "Paris", "name": "Eiffel Tower Tour", "category": "Sightseeing", "price": 35},
+    {"city": "London", "name": "London Eye", "category": "Sightseeing", "price": 30},
+    {"city": "Tokyo", "name": "Akihabara Gaming Tour", "category": "Entertainment", "price": 50}
+  ],
+  "visa_requirements": {
+    "Israel_to_France": "No visa required for tourism up to 90 days",
+    "Israel_to_Japan": "No visa required for tourism up to 90 days",
+    "India_to_France": "Schengen Visa required"
+  },
+  "exchange_rates": {
+    "USD_to_ILS": 3.65,
+    "EUR_to_USD": 1.08,
+    "GBP_to_USD": 1.27
+  }
 }

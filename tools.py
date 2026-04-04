@@ -21,7 +21,7 @@ def fetch_flights(origin: str, destination: str) -> str:
         f for f in db["flights"]
         if f["origin"].lower() == origin.lower()
         and f["destination"].lower() == destination.lower()
-        and f.get("availability", "").lower() != "unavailable"
+        #and f.get("availability", "").lower() != "unavailable"
     ]
     if not results:
         return f"No flights found from {origin} to {destination}."
@@ -40,7 +40,7 @@ def fetch_hotels(city: str, max_price_per_night: float = None) -> str:
     results = [
         h for h in db["hotels"]
         if h["city"].lower() == city.lower()
-        and h.get("availability", "").lower() != "unavailable"
+        #and h.get("availability", "").lower() != "unavailable"
     ]
 
     if max_price_per_night is not None:
@@ -123,3 +123,42 @@ def get_cheapest_flight(origin: str, destination: str) -> str:
         return f"No flights found from {origin} to {destination}."
     cheapest = min(flights, key=lambda f: f["price"])
     return json.dumps(cheapest, indent=2)
+
+@tool
+def fetch_activities(city: str) -> str:
+    """
+    Fetch available tourist activities in a given city from the local database.
+    Returns a list of activities with their name, category, and price.
+    Use this tool when the user asks about attractions, museums, parks, tours,
+    or things to do in a specific city.
+    """
+    db = _load_db()
+    results = [
+        activity for activity in db.get("activities", [])
+        if activity["city"].lower() == city.lower()
+    ]
+
+    if not results:
+        return f"No activities found in {city}."
+
+    return json.dumps(results, indent=2)
+
+
+@tool
+def get_visa_requirement(origin_country: str, destination_country: str) -> str:
+    """
+    Get visa requirement information between two countries from the local database.
+    Returns a clear text answer about whether a visa is required.
+    Use this tool when the user asks about visa requirements, entry rules,
+    or travel document needs between a country of origin and a destination country.
+    """
+    db = _load_db()
+    visa_data = db.get("visa_requirements", {})
+    key = f"{origin_country}_to_{destination_country}"
+
+    result = visa_data.get(key)
+
+    if not result:
+        return f"No visa information found for travelers from {origin_country} to {destination_country}."
+
+    return result
