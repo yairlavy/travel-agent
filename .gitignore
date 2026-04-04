@@ -1,5 +1,7 @@
 .env
+
 taenv/
 __pycache__/
 *.pyc
 test_results.txt
+.env
