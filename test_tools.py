@@ -21,6 +21,8 @@ from tools import (
     list_destinations,
     get_cheapest_hotel,
     get_cheapest_flight,
+    fetch_activities,
+    get_visa_requirement,
 )
 
 PASS = "[PASS]"
@@ -119,5 +121,29 @@ run_test(
     get_cheapest_flight.invoke({"origin": "Tokyo", "destination": "Paris"}),
     "No flights found"
 )
+# fetch_activities
+run_test(
+    "fetch_activities: Paris",
+    fetch_activities.invoke({"city": "Paris"}),
+    "Louvre"
+)
 
+run_test(
+    "fetch_activities: unknown city",
+    fetch_activities.invoke({"city": "Dubai"}),
+    "No activities found"
+)
+
+# get_visa_requirement
+run_test(
+    "get_visa_requirement: Israel -> France",
+    get_visa_requirement.invoke({"origin_country": "Israel", "destination_country": "France"}),
+    "No visa required"
+)
+
+run_test(
+    "get_visa_requirement: unknown route",
+    get_visa_requirement.invoke({"origin_country": "Brazil", "destination_country": "Japan"}),
+    "No visa information found"
+)
 print()
