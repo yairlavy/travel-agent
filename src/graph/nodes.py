@@ -1,4 +1,5 @@
 import re
+import time
 from langchain_core.messages import AIMessage, SystemMessage
 from langgraph.prebuilt import ToolNode
 
@@ -7,6 +8,8 @@ from src.agents.planner import PLANNER_SYSTEM_PROMPT
 from src.utils.logger import get_logger
 
 logger = get_logger("nodes")
+
+_RETRY_PATTERN = re.compile(r"retry in (\d+(?:\.\d+)?)s", re.IGNORECASE)
 
 # City keyword → canonical city name (used by extract_metadata)
 _CITY_MAP = {
@@ -70,9 +73,27 @@ def call_model(state: AgentState) -> dict:
     Core agent node — sends the conversation history to the LLM and returns
     either a tool-call request or a final human-readable answer.
     Increments tool_call_count whenever a tool is requested.
+
+    Automatically retries on 429 rate-limit errors using the delay
+    reported by the API itself (free tier: 5 req/min on gemini-2.5-flash).
     """
     messages = [SystemMessage(content=PLANNER_SYSTEM_PROMPT)] + state["messages"]
-    response = _get_model().invoke(messages)
+
+    max_retries = 4
+    for attempt in range(max_retries):
+        try:
+            response = _get_model().invoke(messages)
+            break
+        except Exception as e:
+            err = str(e)
+            if ("429" in err or "RESOURCE_EXHAUSTED" in err) and attempt < max_retries - 1:
+                match = _RETRY_PATTERN.search(err)
+                wait = int(float(match.group(1))) + 3 if match else 30
+                logger.warning(f"Rate limited — waiting {wait}s (attempt {attempt + 1}/{max_retries})")
+                print(f"\n  [rate limited — retrying in {wait}s...]", flush=True)
+                time.sleep(wait)
+            else:
+                raise
 
     count = state.get("tool_call_count", 0)
     if hasattr(response, "tool_calls") and response.tool_calls:
