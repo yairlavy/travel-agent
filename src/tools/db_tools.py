@@ -24,7 +24,6 @@ def _run_query(query: str, params: tuple = ()) -> list | str:
 
 
 # ── Flights ───────────────────────────────────────────────────────────────────
-
 @tool
 def fetch_flights(origin: str, destination: str) -> str:
     """
@@ -33,8 +32,20 @@ def fetch_flights(origin: str, destination: str) -> str:
     destination: full city name (e.g. 'Paris', 'London', 'Tokyo').
     Returns a list of flights with airline, price, and flight number.
     """
+    query = """
+        SELECT airline, price, flight_number
+        FROM flights
+        WHERE LOWER(origin) = ? AND LOWER(destination) = ?
+        ORDER BY price ASC
+    """
+    results = _run_query(query, (origin.strip().lower(), destination.strip().lower()))
+    
+    if isinstance(results, str):
+        return results
+    if not results:
+        return f"No flights found from {origin} to {destination}."
+    
     return json.dumps(results, indent=2)
-
 
 @tool
 def get_cheapest_flight(origin: str, destination: str) -> str:

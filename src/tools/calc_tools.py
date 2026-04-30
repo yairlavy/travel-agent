@@ -4,9 +4,9 @@ from langchain_core.tools import tool
 
 @tool
 def calculate_trip_cost(
-    flight_price: float,
-    hotel_price_per_night: float,
-    duration_days: int,
+    flight_price: float | str,
+    hotel_price_per_night: float | str,
+    duration_days: int | str,
 ) -> str:
     """
     Calculate the total estimated cost of a trip.
