@@ -4,6 +4,7 @@ langchain-google-genai>=2.0.0
 langgraph>=0.2.0
 python-dotenv>=1.0.0
 pytest>=8.0.0
+grandalf>=0.3.0
 
 # Optional — enables web_search tool
 # langchain-community>=0.3.0

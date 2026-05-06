@@ -1,7 +1,6 @@
 import json
 from langchain_core.tools import tool
-
-
+from typing import Any
 @tool
 def calculate_trip_cost(
     flight_price: float,
@@ -21,10 +20,12 @@ def calculate_trip_cost(
 
         breakdown = {
             "flight": f"${float(flight_price):.2f}",
-            "hotel": f"${hotel_total:.2f}  ({duration_days} nights × ${float(hotel_price_per_night):.2f})",
+            "hotel": f"${hotel_total:.2f} ({duration_days} nights × ${float(hotel_price_per_night):.2f})",
             "total_estimate": f"${grand_total:.2f}",
             "currency": "USD",
         }
+
         return json.dumps(breakdown, indent=2)
+
     except (ValueError, TypeError) as e:
         return f"Error: invalid input — {e}"

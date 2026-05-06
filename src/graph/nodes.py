@@ -33,7 +33,7 @@ def _get_model():
     return _model
 
 
-# ── Node 1: Metadata Extraction ──────────────────────────────────────────────
+# ── Node 1: Metadata Extraction 
 
 def extract_metadata(state: AgentState) -> dict:
     """
@@ -66,7 +66,7 @@ def extract_metadata(state: AgentState) -> dict:
     return updates
 
 
-# ── Node 2: Agent (LLM call) ─────────────────────────────────────────────────
+# ── Node 2: Agent (LLM call) 
 
 def call_model(state: AgentState) -> dict:
     """
@@ -79,7 +79,8 @@ def call_model(state: AgentState) -> dict:
     """
     messages = [SystemMessage(content=PLANNER_SYSTEM_PROMPT)] + state["messages"]
 
-    max_retries = 4
+    max_retries = 2
+    
     for attempt in range(max_retries):
         try:
             response = _get_model().invoke(messages)
@@ -104,7 +105,7 @@ def call_model(state: AgentState) -> dict:
     return {"messages": [response], "tool_call_count": count}
 
 
-# ── Node 3: Circuit Breaker ───────────────────────────────────────────────────
+# ── Node 3: Circuit Breaker 
 
 def circuit_breaker(state: AgentState) -> dict:
     """
