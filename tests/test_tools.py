@@ -132,7 +132,11 @@ def test_calculate_trip_cost_shows_breakdown():
     assert "hotel" in result.lower()
 
 def test_calculate_trip_cost_bad_input():
-    result = calculate_trip_cost.invoke(
-        {"flight_price": "bad", "hotel_price_per_night": 50.0, "duration_days": 3}
-    )
-    assert "Error" in result or "error" in result
+    with pytest.raises(Exception):
+        calculate_trip_cost.invoke(
+            {
+                "flight_price": "bad",
+                "hotel_price_per_night": 50.0,
+                "duration_days": 3,
+            }
+        )

@@ -68,7 +68,9 @@ def run() -> None:
             if not last_plan:
                 print("Agent: No plan to review yet. Ask for a trip first.\n")
                 continue
+
             from src.agents.reviewer import review_plan
+
             print("\nReviewer:")
             print(review_plan(last_plan))
             print()
@@ -95,11 +97,22 @@ def run() -> None:
                 and last_msg.content
                 and not getattr(last_msg, "tool_calls", None)
             ):
-                final_response = last_msg.content
+                content = last_msg.content
+
+                if isinstance(content, list):
+                    final_response = "\n".join(
+                        item.get("text", str(item))
+                        if isinstance(item, dict)
+                        else str(item)
+                        for item in content
+                    )
+                else:
+                    final_response = str(content)
 
         if final_response:
             print(f"\nAgent: {final_response}\n")
             last_plan = final_response
+
             logger.info(
                 "turn complete | city=%s | budget=%s | tools=%d",
                 event.get("current_city", "—"),
@@ -110,8 +123,11 @@ def run() -> None:
 
 if __name__ == "__main__":
     db_path = Path(__file__).parent.parent / "data" / "travel_agency.db"
+
     if not db_path.exists():
         print("First run — initializing database...")
         from src.utils.db_init import create_travel_db
+
         create_travel_db()
+
     run()
