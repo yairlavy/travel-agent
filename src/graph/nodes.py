@@ -66,7 +66,7 @@ def extract_metadata(state: AgentState) -> dict:
     return updates
 
 
-# ── Node 2: Agent (LLM call) 
+#  Node 2: Agent (LLM call) 
 
 def call_model(state: AgentState) -> dict:
     """
