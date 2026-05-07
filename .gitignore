@@ -19,3 +19,5 @@ data/checkpoints.db
 # Test artifacts
 .pytest_cache/
 test_results.txt
+
+.early.coverage
