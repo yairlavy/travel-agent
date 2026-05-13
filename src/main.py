@@ -372,9 +372,9 @@ def run() -> None:
 
         logger.info(
             "turn complete | city=%s | budget=%s | tools=%d",
-            last_event.get("current_city", "—"),
-            last_event.get("total_budget", "—"),
-            last_event.get("tool_call_count", 0),
+            accumulated.get("current_city", "—"),
+            accumulated.get("total_budget", "—"),
+            accumulated.get("tool_call_count", 0),
         )
 
 
