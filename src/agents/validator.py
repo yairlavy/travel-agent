@@ -1,10 +1,11 @@
 """
 Validator — hardcoded security guardrail, zero LLM calls.
 
-Checks every user message for three threat categories before Marco runs:
-  1. Prompt injection  — attempts to override system instructions
-  2. Out-of-scope      — requests completely unrelated to travel
-  3. Unsupported city  — destination not in the database
+Checks every user message for four threat categories before Marco runs:
+  0. Harmful content    — violence, illegal requests, hate speech, abuse
+  1. Prompt injection   — attempts to override system instructions
+  2. Out-of-scope       — requests completely unrelated to travel
+  3. Unsupported city   — destination not in the database
 
 All checks are regex / keyword based and compile once at class load time.
 """
@@ -14,12 +15,12 @@ from dataclasses import dataclass
 from typing import Optional
 
 
-# ── Result dataclass (same interface as the old LLM validator) ────────────────
+# ── Result dataclass ──────────────────────────────────────────────────────────
 
 @dataclass
 class ValidationResult:
     approved: bool
-    verdict: str          # APPROVED | BLOCKED_INJECTION | BLOCKED_SCOPE | BLOCKED_CITY
+    verdict: str          # APPROVED | BLOCKED_HARM | BLOCKED_INJECTION | BLOCKED_SCOPE | BLOCKED_CITY
     reason: str
     rejection_message: str
 
@@ -27,6 +28,12 @@ class ValidationResult:
 # ── Rejection messages shown to the user ─────────────────────────────────────
 
 _REJECTION_MESSAGES = {
+    "BLOCKED_HARM": (
+        "I'm sorry, but I'm unable to process your request as it appears to violate "
+        "our usage guidelines. I'm Marco, a travel planning assistant here to help you "
+        "plan wonderful trips. Please keep our conversation respectful and travel-related. "
+        "Feel free to ask me about flights, hotels, or activities!"
+    ),
     "BLOCKED_INJECTION": (
         "I noticed your message contains instructions trying to change my behaviour. "
         "I'm Marco, your travel planning assistant, and I can only help with "
@@ -51,6 +58,7 @@ class InputValidator:
     """
     Stateless hardcoded validator.  All patterns compile once on first use.
     Call InputValidator.validate(message) → ValidationResult.
+    detect_harm() is a public static method and can be called independently.
     """
 
     # Cities in the database
@@ -70,6 +78,20 @@ class InputValidator:
         "tel aviv", "jerusalem", "beirut", "karachi", "lahore",
         "lagos", "accra", "tunis", "algiers", "cape town",
     })
+
+    # ── Harm patterns (checked before everything else) ────────────────────────
+    _HARM_PATTERNS_RAW = [
+        (r"\b(kill|murder|shoot|stab|blow\s+up|slaughter)\s+(someone|people|person|him|her|them|you|us|everyone)\b", "threat of violence"),
+        (r"\bi\s+(want\s+to|will|am\s+going\s+to)\s+(kill|murder|hurt|attack|destroy|harm)\b", "direct threat"),
+        (r"\bhow\s+to\s+(make|build|create|synthesize)\s+(a\s+)?(bomb|weapon|explosive|poison|bioweapon|nerve\s+agent|drug)\b", "dangerous instructions"),
+        (r"\b(suicide|self[\-\s]harm|kill\s+myself|end\s+my\s+life|want\s+to\s+die)\b", "self-harm"),
+        (r"\b(hack|breach|crack)\s+(into\s+)?(the\s+)?(system|server|database|account|network|mainframe)\b", "hacking"),
+        (r"\b(child\s+porn|csam|underage\s+(sex|nude|naked|porn))\b", "csam"),
+        (r"\b(ethnic\s+cleansing|genocide|hate\s+crime|racial\s+violence)\b", "hate crime"),
+        (r"\b(fuck\s+you|go\s+to\s+hell|you\s+(suck|are\s+stupid|idiot|moron))\b", "abusive language"),
+        (r"\b(steal|rob|defraud|scam|phish)\s+(credit\s+card|identity|money|bank|people)\b", "fraud"),
+        (r"\b(drug\s+deal|sell\s+drugs|buy\s+cocaine|buy\s+heroin|smuggl(e|ing))\b", "illegal substances"),
+    ]
 
     # Regex patterns that signal prompt injection
     _INJECTION_PATTERNS_RAW = [
@@ -120,14 +142,23 @@ class InputValidator:
         "destination", "visa", "activities", "activity", "itinerary", "airport",
         "airline", "vacation", "holiday", "tourism", "tourist", "accommodation",
         "booking", "book", "ticket", "passport", "tour", "sightseeing",
-        "paris", "london", "tokyo", "new york", "berlin",
         "cheapest", "budget", "cost", "price", "nights", "days",
         "plan", "help", "hi", "hello",
     })
 
     # Compiled pattern caches
+    _harm_compiled: Optional[list] = None
     _injection_compiled: Optional[list] = None
     _off_topic_compiled: Optional[list] = None
+
+    @classmethod
+    def _harm_patterns(cls) -> list:
+        if cls._harm_compiled is None:
+            cls._harm_compiled = [
+                (re.compile(p, re.IGNORECASE), label)
+                for p, label in cls._HARM_PATTERNS_RAW
+            ]
+        return cls._harm_compiled
 
     @classmethod
     def _injection_patterns(cls) -> list:
@@ -146,11 +177,41 @@ class InputValidator:
             ]
         return cls._off_topic_compiled
 
+    @staticmethod
+    def detect_harm(message: str) -> Optional[tuple]:
+        """
+        Public static method — scans message for harmful or violating content.
+
+        Checks for: violence, dangerous instructions, self-harm, hacking,
+        hate crimes, abusive language, fraud, and illegal activity.
+
+        Returns (verdict, reason) tuple if harm is detected, None if clean.
+        Can be called independently: InputValidator.detect_harm(message)
+
+        When harm is detected the caller should cancel all further processing
+        and return the BLOCKED_HARM rejection message to the user.
+        """
+        for pattern, label in InputValidator._harm_patterns():
+            if pattern.search(message):
+                return ("BLOCKED_HARM", f"Harmful content detected: {label}")
+        return None
+
     @classmethod
     def validate(cls, message: str) -> ValidationResult:
         msg_lower = message.lower().strip()
 
-        # ── 1. Injection check (highest priority) ────────────────────────────
+        # ── 0. Harm check (absolute highest priority) ─────────────────────────
+        harm = cls.detect_harm(message)
+        if harm:
+            verdict, reason = harm
+            return ValidationResult(
+                approved=False,
+                verdict=verdict,
+                reason=reason,
+                rejection_message=_REJECTION_MESSAGES["BLOCKED_HARM"],
+            )
+
+        # ── 1. Injection check ────────────────────────────────────────────────
         for pattern in cls._injection_patterns():
             if pattern.search(message):
                 return ValidationResult(

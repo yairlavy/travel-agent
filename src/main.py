@@ -11,12 +11,21 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-_api_key = os.getenv("GOOGLE_API_KEY", "")
-if not _api_key or _api_key.startswith("your_"):
-    raise SystemExit(
-        "\n[ERROR] GOOGLE_API_KEY is not set.\n"
-        "Edit the .env file in the project root and add your real key.\n"
-    )
+_provider = os.getenv("LLM_PROVIDER", "gemini").lower()
+if _provider == "groq":
+    _api_key = os.getenv("GROQ_API_KEY", "")
+    if not _api_key or _api_key.startswith("your_"):
+        raise SystemExit(
+            "\n[ERROR] GROQ_API_KEY is not set.\n"
+            "Edit the .env file and add your Groq key, or set LLM_PROVIDER=gemini.\n"
+        )
+else:
+    _api_key = os.getenv("GOOGLE_API_KEY", "")
+    if not _api_key or _api_key.startswith("your_"):
+        raise SystemExit(
+            "\n[ERROR] GOOGLE_API_KEY is not set.\n"
+            "Edit the .env file in the project root and add your real key.\n"
+        )
 
 from langchain_core.messages import AIMessage
 from rich.console import Console
@@ -85,10 +94,11 @@ def _is_researcher(text: str) -> bool:
 
 def _print_banner() -> None:
     console.print()
+    provider_label = os.getenv("LLM_PROVIDER", "gemini").upper()
     console.print(Panel(
         Text.assemble(
             ("  AI Travel Planner\n", "bold white"),
-            ("  Powered by Gemini + LangGraph\n\n", "dim white"),
+            (f"  Powered by {provider_label} + LangGraph\n\n", "dim white"),
             ("  Destinations: ", "dim white"),
             (_SUPPORTED, "bold cyan"),
         ),
@@ -141,9 +151,20 @@ def _print_status(city: Optional[str], budget: Optional[float], tool_count: int)
 
 
 def run() -> None:
-    config = {"configurable": {"thread_id": "session_01"}}
-
     _print_banner()
+
+    session_id = Prompt.ask(
+        "[bold cyan]Enter your session ID[/bold cyan] [dim](press Enter for default)[/dim]",
+        default="session_01",
+    )
+    config = {"configurable": {"thread_id": session_id}}
+
+    is_admin = session_id.upper().endswith("ADMIN00")
+
+    if is_admin:
+        console.print(f"[dim]  Session: {session_id}[/dim]  [bold yellow]⚙  ADMIN MODE — plan reviews enabled[/bold yellow]\n")
+    else:
+        console.print(f"[dim]  Session: {session_id} — memory will be saved and restored automatically.[/dim]\n")
 
     while True:
         try:
@@ -167,7 +188,7 @@ def run() -> None:
         try:
             with console.status("[tool.call]Marco is thinking...[/tool.call]", spinner="dots") as status:
                 for event in graph.stream(
-                    {"messages": [("user", user_input)]},
+                    {"messages": [("user", user_input)], "is_admin": is_admin},
                     config,
                     stream_mode="values",
                 ):
