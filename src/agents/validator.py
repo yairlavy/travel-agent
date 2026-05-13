@@ -205,6 +205,20 @@ class InputValidator:
         "prefer", "preference", "favourite", "favorite", "kosher", "vegan",
         "vegetarian", "halal", "traveler", "travellers", "travelers", "passenger",
         "flying", "fly",
+        # Country names for visa checks — map to supported cities
+        # Japan→Tokyo, France→Paris, uk/england/britain→London,
+        # germany→Berlin, usa/america→New York
+        "japan", "france", "germany",
+        "uk", "england", "britain", "united kingdom",
+        "usa", "america", "united states",
+    })
+
+    # Country names that correspond to supported cities — never block these
+    # even though they are not city names in SUPPORTED_CITIES
+    _VISA_COUNTRY_NAMES = frozenset({
+        "japan", "france", "germany",
+        "uk", "england", "britain", "united kingdom",
+        "usa", "america", "united states",
     })
 
     # Compiled pattern caches
@@ -321,6 +335,10 @@ class InputValidator:
         for city in cls.SUPPORTED_CITIES:
             if city in msg_lower:
                 return city
+        # Country names that map to supported cities are never unsupported
+        for country in cls._VISA_COUNTRY_NAMES:
+            if country in msg_lower:
+                return None
         for city in cls.KNOWN_UNSUPPORTED_CITIES:
             if city in msg_lower:
                 return city
