@@ -1,12 +1,13 @@
 import json
 import sqlite3
 from pathlib import Path
+from typing import Union
 from langchain_core.tools import tool
 
 DB_PATH = Path(__file__).parent.parent.parent / "data" / "travel_agency.db"
 
 
-def _run_query(query: str, params: tuple = ()) -> list | str:
+def _run_query(query: str, params: tuple = ()) -> Union[list, str]:
     """Execute a parameterised SQL query and return rows as dicts, or an error string."""
     if not DB_PATH.exists():
         return "Error: Database not found. Run `python -m src.utils.db_init` first."

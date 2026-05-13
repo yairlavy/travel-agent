@@ -1,13 +1,15 @@
 """
-Convenience launcher — run from the project root: python run.py
+Entry point for the AI Travel Planner.
+
+Run:  python run.py
+      ./travel.sh
 """
 
-# Load .env BEFORE any src imports so the API key is in the environment
-# when ChatGoogleGenerativeAI is first constructed inside the graph.
-from pathlib import Path
-from dotenv import load_dotenv
+import warnings
+import logging
 
-load_dotenv(Path(__file__).parent / ".env")
+warnings.warn = lambda *args, **kwargs: None  # suppress all third-party warnings
+logging.disable(logging.CRITICAL)             # suppress all log output to the terminal
 
 from src.main import run
 
