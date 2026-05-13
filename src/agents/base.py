@@ -7,7 +7,7 @@ PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
 
 _DEFAULTS = {
     "gemini": "gemini-2.5-flash",
-    "groq": "llama-3.1-8b-instant",   # 14,400 req/day free vs 500 for 70b
+    "groq": "llama-3.1-8b-instant",  # smarter, parallel tool calls, better planning
 }
 
 MODEL_NAME = os.getenv("LLM_MODEL", _DEFAULTS.get(PROVIDER, "gemini-2.5-flash"))
