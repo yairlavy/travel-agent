@@ -1,25 +1,30 @@
 import os
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
 
 load_dotenv()
 
-MODEL_NAME = os.getenv("LLM_MODEL", "gemini-2.5-flash")
+PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
+
+_DEFAULTS = {
+    "gemini": "gemini-2.5-flash",
+    "groq": "llama-3.3-70b-versatile",
+}
+
+MODEL_NAME = os.getenv("LLM_MODEL", _DEFAULTS.get(PROVIDER, "gemini-2.5-flash"))
 
 
-def get_model(
-    temperature: float = 0,
-    bind_tools: list = None,
-) -> ChatGoogleGenerativeAI:
+def get_model(temperature: float = 0, bind_tools: list = None):
     """
-    Factory — returns a configured Gemini model instance.
-    Pass bind_tools to create a tool-capable model for agent nodes.
-    All agents share this factory so the model name stays in one place.
+    Factory — returns a configured LLM instance.
+    Switch providers by setting LLM_PROVIDER=groq (or gemini) in .env.
     """
-    model = ChatGoogleGenerativeAI(
-        model=MODEL_NAME,
-        temperature=temperature,
-    )
+    if PROVIDER == "groq":
+        from langchain_groq import ChatGroq
+        model = ChatGroq(model=MODEL_NAME, temperature=temperature)
+    else:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        model = ChatGoogleGenerativeAI(model=MODEL_NAME, temperature=temperature)
+
     if bind_tools:
         return model.bind_tools(bind_tools)
     return model
