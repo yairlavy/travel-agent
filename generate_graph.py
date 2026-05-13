@@ -1,74 +1,73 @@
 """
 Generates graph.png from a hand-crafted Mermaid diagram.
 
-Solid arrows  -->   fixed edges (always taken)
-Dashed arrows -.->  conditional edges (router decides at runtime)
+Layout:
+  Spine (center): START -> extract_metadata -> validator -> agent -> summarizer -> END
+  Side nodes branch off the spine. All paths lead to the single END node,
+  with a label on each edge explaining why that path terminated.
 
-Renders via mermaid.ink (no local install required).
+Solid arrows  -->    fixed edges
+Dashed arrows -.->   conditional edges (router decides at runtime)
 """
 
 import base64
 import httpx
 
 MERMAID = """flowchart TD
+
     S([START]) --> EM
 
     EM[extract_metadata]
-
-    EM -. recall query .-> RC
-    EM -. preference stated .-> UP
     EM --> V
 
-    RC[recall]
-    RC --> E1([END])
+    V[validator]
+    V -->|approved| A
 
+    A[agent - Marco]
+    A --> SM
+
+    SM[summarizer]
+    SM -->|turn complete| E([END])
+
+    EM -.->|preference stated| UP
     UP[update_preferences]
     UP --> V
 
-    V[validator\nGroq AI + regex fallback]
+    EM -.->|recall query| RC
+    RC[recall]
+    RC -->|memory answered| E
 
-    V -. blocked .-> E2([END])
-    V -. research query .-> RE
-    V --> A
+    V -.->|request blocked| E
+    V -.->|research query| RE
+    RE[researcher]
+    RE -->|data lookup complete| E
 
-    RE[researcher\ndirect DB - no LLM]
-    RE --> E3([END])
-
-    A[agent - Marco\nGemini or Groq LLM]
-
-    A -. has tool calls .-> T
-    A -. count over 8 or loop .-> CB
-    A -. admin + full plan .-> RV
-    A --> SM
-
-    T[tools\nfetch flights - hotels\nactivities - visa - cost]
+    A -.->|has tool calls| T
+    T[tools]
     T --> A
 
-    CB[circuit_breaker\nloop guard]
-    CB --> E4([END])
+    A -.->|count over 8 or loop| CB
+    CB[circuit_breaker]
+    CB -->|loop stopped| E
 
-    RV[reviewer\nadmin sessions only]
+    A -.->|admin and full plan| RV
+    RV[reviewer]
     RV --> SM
 
-    SM[summarizer\ncompacts history]
-    SM --> E5([END])
+    style S  fill:#1a1a2e,color:#fff,stroke:#1a1a2e
+    style E  fill:#1a1a2e,color:#fff,stroke:#1a1a2e
 
-    style S  fill:#263238,color:#fff,stroke:#263238
-    style E1 fill:#263238,color:#fff,stroke:#263238
-    style E2 fill:#263238,color:#fff,stroke:#263238
-    style E3 fill:#263238,color:#fff,stroke:#263238
-    style E4 fill:#263238,color:#fff,stroke:#263238
-    style E5 fill:#263238,color:#fff,stroke:#263238
     style EM fill:#0277bd,color:#fff,stroke:#01579b
-    style UP fill:#00695c,color:#fff,stroke:#004d40
-    style RC fill:#00695c,color:#fff,stroke:#004d40
     style V  fill:#e65100,color:#fff,stroke:#bf360c
-    style RE fill:#1565c0,color:#fff,stroke:#0d47a1
     style A  fill:#1565c0,color:#fff,stroke:#0d47a1
+    style SM fill:#6a1b9a,color:#fff,stroke:#4a148c
+
+    style UP fill:#2e7d32,color:#fff,stroke:#1b5e20
+    style RC fill:#2e7d32,color:#fff,stroke:#1b5e20
+    style RE fill:#00838f,color:#fff,stroke:#006064
     style T  fill:#1565c0,color:#fff,stroke:#0d47a1
     style CB fill:#b71c1c,color:#fff,stroke:#7f0000
-    style RV fill:#f9a825,color:#000,stroke:#f57f17
-    style SM fill:#6a1b9a,color:#fff,stroke:#4a148c"""
+    style RV fill:#f57f17,color:#000,stroke:#e65100"""
 
 
 def render(mermaid_str: str, output: str = "graph.png") -> None:
@@ -79,7 +78,7 @@ def render(mermaid_str: str, output: str = "graph.png") -> None:
     resp.raise_for_status()
     with open(output, "wb") as f:
         f.write(resp.content)
-    print(f"Graph image saved as {output}")
+    print(f"Saved as {output}")
 
 
 if __name__ == "__main__":
