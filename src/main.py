@@ -260,42 +260,81 @@ def run() -> None:
         console.print()
 
         seen_contents: set = set()
-        last_event: dict = {}
+        # Accumulated state fields for the bottom status bar
+        accumulated: dict = {"current_city": None, "total_budget": None, "tool_call_count": 0}
 
         try:
-            with console.status("[tool.call]Marco is thinking...[/tool.call]", spinner="dots") as status:
+            with console.status("[tool.call]Starting...[/tool.call]", spinner="dots") as status:
                 for event in graph.stream(
                     {"messages": [("user", user_input)], "is_admin": is_admin},
                     config,
-                    stream_mode="values",
+                    stream_mode="updates",
                 ):
-                    last_event = event
-                    last_msg = event["messages"][-1]
+                    # event = {node_name: {state_updates}}
+                    node_name = next(iter(event))
+                    node_data = event[node_name]
 
-                    if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
-                        labels = [
-                            _TOOL_LABELS.get(tc["name"], f"⚙  {tc['name']}")
-                            for tc in last_msg.tool_calls
-                        ]
-                        status.update(f"[tool.call]{' · '.join(labels)}...[/tool.call]")
+                    # Merge state fields we care about for status bar
+                    for key in ("current_city", "total_budget", "tool_call_count"):
+                        if key in node_data:
+                            accumulated[key] = node_data[key]
 
-                    elif (
-                        isinstance(last_msg, AIMessage)
-                        and last_msg.content
-                        and not getattr(last_msg, "tool_calls", None)
-                    ):
-                        text = _extract_text(last_msg.content)
-                        if text and text not in seen_contents:
-                            seen_contents.add(text)
-                            status.stop()
-                            _print_agent(text)
-                            status.start()
-                            status.update("[tool.call]✦  Reviewing plan...[/tool.call]")
+                    # ── Update spinner label based on which node is running ──
+                    if node_name == "extract_metadata":
+                        status.update("[tool.call]Reading your message...[/tool.call]")
+
+                    elif node_name in ("validator",):
+                        status.update("[tool.call]Validating your request...[/tool.call]")
+
+                    elif node_name == "update_preferences":
+                        status.update("[tool.call]Saving your preferences...[/tool.call]")
+
+                    elif node_name == "recall":
+                        status.update("[tool.call]Checking memory...[/tool.call]")
+
+                    elif node_name == "researcher":
+                        status.update("[tool.call]Searching database...[/tool.call]")
+
+                    elif node_name == "agent":
+                        msgs = node_data.get("messages", [])
+                        if msgs and hasattr(msgs[-1], "tool_calls") and msgs[-1].tool_calls:
+                            labels = [
+                                _TOOL_LABELS.get(tc["name"], f"⚙  {tc['name']}")
+                                for tc in msgs[-1].tool_calls
+                            ]
+                            status.update(f"[tool.call]{' · '.join(labels)}...[/tool.call]")
+                        else:
+                            status.update("[tool.call]Marco is thinking...[/tool.call]")
+
+                    elif node_name == "tools":
+                        status.update("[tool.call]Running tools...[/tool.call]")
+
+                    elif node_name == "reviewer":
+                        status.update("[tool.call]Reviewing your plan...[/tool.call]")
+
+                    elif node_name == "summarizer":
+                        status.update("[tool.call]Compressing conversation...[/tool.call]")
+
+                    # ── Display any final AI messages ─────────────────────────
+                    msgs = node_data.get("messages", [])
+                    if msgs:
+                        last_msg = msgs[-1]
+                        if (
+                            isinstance(last_msg, AIMessage)
+                            and last_msg.content
+                            and not getattr(last_msg, "tool_calls", None)
+                        ):
+                            text = _extract_text(last_msg.content)
+                            if text and text not in seen_contents:
+                                seen_contents.add(text)
+                                status.stop()
+                                _print_agent(text)
+                                status.start()
 
             _print_status(
-                city=last_event.get("current_city"),
-                budget=last_event.get("total_budget"),
-                tool_count=last_event.get("tool_call_count", 0),
+                city=accumulated.get("current_city"),
+                budget=accumulated.get("total_budget"),
+                tool_count=accumulated.get("tool_call_count", 0),
             )
 
         except Exception as e:
