@@ -300,14 +300,27 @@ def run() -> None:
 
         except Exception as e:
             err = str(e)
-            if "429" in err or "RESOURCE_EXHAUSTED" in err or "quota" in err.lower():
-                import re
+            is_rate_limit = (
+                "429" in err
+                or "RESOURCE_EXHAUSTED" in err
+                or "rate_limit" in err.lower()
+                or "quota" in err.lower()
+                or "rate limit" in err.lower()
+            )
+            if is_rate_limit:
                 wait = re.search(r"retry in (\d+)", err)
-                wait_msg = f"Retry in {wait.group(1)}s." if wait else "Try again in a minute."
+                wait_msg = f"Retry in {wait.group(1)}s." if wait else "Try again in a moment."
+                provider = os.getenv("LLM_PROVIDER", "gemini").upper()
+                model = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile" if provider == "GROQ" else "gemini-2.5-flash")
+                if provider == "GROQ":
+                    limits = "llama-3.3-70b-versatile: 500 req/day · llama-3.1-8b-instant: 14,400 req/day"
+                    tip = "Switch to a faster model: set LLM_MODEL=llama-3.1-8b-instant in .env"
+                else:
+                    limits = "20 requests/day · 10 per minute"
+                    tip = "Switch to Groq for higher limits: set LLM_PROVIDER=groq in .env"
                 console.print(Panel(
-                    f"[yellow]You've hit the Gemini free-tier quota limit.\n{wait_msg}[/yellow]\n\n"
-                    "[dim]The free tier allows 20 requests/day and 10/minute.\n"
-                    "Wait a moment and try again, or use a simpler query.[/dim]",
+                    f"[yellow]Rate limit reached on {provider} ({model}).\n{wait_msg}[/yellow]\n\n"
+                    f"[dim]{limits}\n{tip}[/dim]",
                     title="[red]Rate Limited[/red]",
                     border_style="red",
                 ))
