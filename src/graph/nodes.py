@@ -83,6 +83,50 @@ def extract_metadata(state: AgentState) -> dict:
     return updates
 
 
+# ── Preference extraction helper ──────────────────────────────────────────────
+
+def _extract_preference_with_llm(message: str) -> str | None:
+    """
+    Uses Groq llama-3.1-8b-instant to extract any travel preference that is
+    not covered by the hardcoded airline / food / traveler detection.
+
+    Returns a short normalized phrase (e.g. "Prefers Airbus aircraft") or
+    None if no extractable preference is found or Groq is unavailable.
+    """
+    import os
+    if not os.getenv("GROQ_API_KEY", "").startswith("gsk_"):
+        return None
+    try:
+        from langchain_groq import ChatGroq
+        model = ChatGroq(model="llama-3.1-8b-instant", temperature=0, max_tokens=20, timeout=5)
+        response = model.invoke([
+            SystemMessage(content=(
+                "You extract specific travel preferences from user messages.\n"
+                "Return ONLY a short phrase (max 8 words) or exactly 'none'.\n"
+                "Skip airline names, food types, number of travelers — those are handled elsewhere.\n\n"
+                "Examples:\n"
+                "'I prefer Airbus planes for safety' → 'Prefers Airbus aircraft'\n"
+                "'I want window seats always' → 'Prefers window seats'\n"
+                "'I only take direct flights' → 'Direct flights only'\n"
+                "'I like morning departures' → 'Prefers morning departures'\n"
+                "'I need wheelchair accessibility' → 'Requires wheelchair access'\n"
+                "'I prefer business class' → 'Prefers business class'\n"
+                "'I prefer 5-star hotels' → 'Prefers 5-star hotels'\n"
+                "'I prefer El Al and kosher' → 'none'\n"
+                "'Plan a trip to Paris' → 'none'\n"
+                "'I travel with 2 people' → 'none'"
+            )),
+            HumanMessage(content=f"Message: \"{message}\"\nPreference:"),
+        ])
+        result = response.content.strip().strip('"\'').strip()
+        if not result or result.lower() == "none":
+            return None
+        return result
+    except Exception as e:
+        logger.warning("Preference LLM extraction failed: %s", e)
+        return None
+
+
 # ── Node 2: Update Preferences ───────────────────────────────────────────────
 
 def update_preferences(state: AgentState) -> dict:
@@ -114,6 +158,19 @@ def update_preferences(state: AgentState) -> dict:
         updates["num_travelers"] = int(traveler_match.group(1))
         logger.info(f"Preference detected — travelers: {traveler_match.group(1)}")
 
+    # LLM-based extraction for any preference not covered above (e.g. aircraft
+    # type, seat preference, flight class, hotel rating, direct-only, etc.)
+    raw_content = getattr(state["messages"][-1], "content", "")
+    extra = _extract_preference_with_llm(raw_content)
+    if extra:
+        existing = state.get("travel_preferences", "") or ""
+        # Avoid duplicating the same preference if already stored
+        if extra.lower() not in existing.lower():
+            updates["travel_preferences"] = (
+                f"{existing}\n- {extra}".strip() if existing else f"- {extra}"
+            )
+            logger.info(f"Preference detected (LLM) — {extra}")
+
     return updates
 
 
@@ -131,6 +188,7 @@ def recall_node(state: AgentState) -> dict:
     travelers = state.get("num_travelers")
     city = state.get("current_city")
     budget = state.get("total_budget")
+    extra_prefs = state.get("travel_preferences")
 
     if airline:
         parts.append(f"- Preferred airline: **{airline}**")
@@ -138,6 +196,8 @@ def recall_node(state: AgentState) -> dict:
         parts.append(f"- Food preference: **{food}**")
     if travelers:
         parts.append(f"- Number of travelers: **{travelers}**")
+    if extra_prefs:
+        parts.append(f"- Other preferences:\n{extra_prefs}")
     if city:
         parts.append(f"- Last destination: **{city}**")
     if budget:
@@ -223,6 +283,8 @@ def call_model(state: AgentState) -> dict:
         profile_lines.append(f"- Dietary preference: {state['food_preference']}")
     if state.get("num_travelers"):
         profile_lines.append(f"- Traveling with: {state['num_travelers']} people")
+    if state.get("travel_preferences"):
+        profile_lines.append(f"- Additional preferences:\n{state['travel_preferences']}")
 
     summary = state.get("conversation_summary", "")
 

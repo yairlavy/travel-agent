@@ -29,3 +29,4 @@ class AgentState(TypedDict):
     num_travelers: int
     is_admin: bool
     conversation_summary: str
+    travel_preferences: str

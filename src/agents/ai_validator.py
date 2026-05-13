@@ -58,6 +58,12 @@ Users can state personal travel preferences at any time. These are always safe a
 - Food preferences: "I eat kosher", "I am vegan", "I prefer halal food", "I'm vegetarian"
 - Number of travelers: "I travel with 2 people", "we are 3 passengers", "family of 4"
 - Any combination: "I prefer El Al, eat kosher, travelling with 2 people"
+- Aircraft type: "I prefer Airbus planes", "I only fly Boeing 787"
+- Seat preferences: "I always book window seats", "I prefer aisle seats"
+- Flight class: "I prefer business class", "I always fly economy"
+- Flight type: "I only take direct flights", "I prefer morning departures"
+- Hotel preferences: "I like 5-star hotels", "I prefer hotels near the city center"
+- Any other travel-related personal preference
 
 ---
 
