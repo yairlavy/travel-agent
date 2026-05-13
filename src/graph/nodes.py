@@ -126,6 +126,43 @@ def circuit_breaker(state: AgentState) -> dict:
     return {"messages": [msg]}
 
 
+# ── Node 4: Researcher ───────────────────────────────────────────────────────
+
+def researcher_node(state: AgentState) -> dict:
+    """
+    Lightweight data-lookup node — handles simple factual queries
+    (e.g. "what hotels are in Tokyo?") without the full planning workflow.
+    Routes here when route_intent detects a research-only question.
+    """
+    from src.agents.researcher import research
+    last_content = getattr(state["messages"][-1], "content", "")
+    result = research(last_content)
+    content = result if isinstance(result, str) else str(result)
+    logger.info("Researcher node completed query.")
+    return {"messages": [AIMessage(content=content)]}
+
+
+# ── Node 5: Reviewer ─────────────────────────────────────────────────────────
+
+def reviewer_node(state: AgentState) -> dict:
+    """
+    Quality-control node — automatically critiques Marco's final travel plan.
+    Only runs when the agent produced a full plan (city detected + 3+ tool calls).
+    Appends a structured review to the conversation as a follow-up AIMessage.
+    """
+    from src.agents.reviewer import review_plan
+    last_msg = state["messages"][-1]
+    content = last_msg.content
+    if isinstance(content, list):
+        content = "\n".join(
+            item.get("text", str(item)) if isinstance(item, dict) else str(item)
+            for item in content
+        )
+    review = review_plan(str(content))
+    logger.info("Reviewer node completed critique.")
+    return {"messages": [AIMessage(content=f"\n---\n**Plan Review (auto):**\n{review}")]}
+
+
 # ── Tool Node (prebuilt) ──────────────────────────────────────────────────────
 
 def build_tools_node():
