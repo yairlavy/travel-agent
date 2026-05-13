@@ -5,6 +5,7 @@ Run:  python run.py
 """
 
 import os
+import re
 from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
@@ -150,13 +151,89 @@ def _print_status(city: Optional[str], budget: Optional[float], tool_count: int)
     console.print()
 
 
+_SESSION_ID_PATTERN = re.compile(r'^[a-zA-Z0-9_\-]{1,50}$')
+
+# Words that are never acceptable inside a session ID.
+# Checked by splitting on underscores and hyphens so "kill_01" is caught
+# but "nick_01" is not. The AI validator is intentionally NOT used here
+# because it is tuned for full natural-language sentences and over-blocks
+# legitimate short identifiers like "nick_01" or "studentADMIN00".
+_BANNED_SESSION_WORDS = frozenset({
+    # Violence / harm
+    "kill", "murder", "bomb", "attack", "shoot", "stab", "harm", "hurt",
+    # Hacking / illegal
+    "hack", "crack", "exploit", "inject", "exec", "eval",
+    # SQL / system abuse
+    "drop", "delete", "truncate", "insert", "select", "update",
+    # Injection keywords
+    "ignore", "override", "bypass", "jailbreak", "dan",
+    "forget", "disregard", "prompt", "system",
+})
+
+
+def _validate_session_id(session_id: str) -> tuple:
+    """
+    Validates the session ID before it is used as a thread_id.
+
+    Two checks:
+      1. Format — alphanumeric + underscore/hyphen, 1-50 chars.
+         Rejects empty strings, spaces, and special characters that
+         could interfere with SQLite or the checkpoint system.
+
+      2. Content — splits on underscore/hyphen and checks each word
+         against a blacklist of harmful and injection keywords.
+         Uses word-level matching (not the AI validator) because session
+         IDs are identifiers, not natural language — the AI validator
+         over-interprets short identifiers like "nick_01" as threats.
+
+    Returns:
+        (True,  "")            — session ID is safe to use
+        (False, error_message) — session ID is invalid; reason in message
+    """
+    # ── 1. Format check ───────────────────────────────────────────────────────
+    if not session_id or not session_id.strip():
+        return False, "Session ID cannot be empty."
+
+    if not _SESSION_ID_PATTERN.match(session_id):
+        return False, (
+            "Session ID may only contain letters, numbers, underscores (_) and hyphens (-)."
+            " Maximum 50 characters."
+        )
+
+    # ── 2. Word-level content check ───────────────────────────────────────────
+    words = set(re.split(r'[_\-]', session_id.lower()))
+    banned = words & _BANNED_SESSION_WORDS
+    if banned:
+        return False, f"Session ID contains a prohibited word: '{next(iter(banned))}'."
+
+    return True, ""
+
+
 def run() -> None:
     _print_banner()
 
-    session_id = Prompt.ask(
-        "[bold cyan]Enter your session ID[/bold cyan] [dim](press Enter for default)[/dim]",
-        default="session_01",
-    )
+    # ── Session ID with validation loop ───────────────────────────────────────
+    max_attempts = 3
+    session_id = None
+
+    for attempt in range(max_attempts):
+        raw = Prompt.ask(
+            "[bold cyan]Enter your session ID[/bold cyan] [dim](press Enter for default)[/dim]",
+            default="session_01",
+        )
+        valid, error = _validate_session_id(raw)
+        if valid:
+            session_id = raw
+            break
+        console.print(Panel(
+            f"[red]Invalid session ID:[/red] {error}\nPlease try again.",
+            border_style="red",
+            padding=(0, 2),
+        ))
+    else:
+        console.print("[red]Too many invalid attempts. Using default session.[/red]")
+        session_id = "session_01"
+
     config = {"configurable": {"thread_id": session_id}}
 
     is_admin = session_id.upper().endswith("ADMIN00")
