@@ -161,6 +161,18 @@ def run() -> None:
         seen_contents: set = set()
         last_event: dict = {}
 
+        _TOOL_LABELS = {
+            "fetch_flights":       "✈  Searching flights",
+            "fetch_hotels":        "🏨  Searching hotels",
+            "fetch_activities":    "🎭  Finding activities",
+            "get_visa_requirement":"🛂  Checking visa requirements",
+            "calculate_trip_cost": "💰  Calculating costs",
+            "get_cheapest_flight": "✈  Finding cheapest flight",
+            "get_cheapest_hotel":  "🏨  Finding cheapest hotel",
+            "list_destinations":   "🗺  Listing destinations",
+            "web_search":          "🌐  Searching the web",
+        }
+
         with console.status("[tool.call]Marco is thinking...[/tool.call]", spinner="dots") as status:
             for event in graph.stream(
                 {"messages": [("user", user_input)]},
@@ -171,8 +183,11 @@ def run() -> None:
                 last_msg = event["messages"][-1]
 
                 if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
-                    names = ", ".join(tc["name"] for tc in last_msg.tool_calls)
-                    status.update(f"[tool.call]⚙  Calling: {names}[/tool.call]")
+                    labels = [
+                        _TOOL_LABELS.get(tc["name"], f"⚙  {tc['name']}")
+                        for tc in last_msg.tool_calls
+                    ]
+                    status.update(f"[tool.call]{' · '.join(labels)}...[/tool.call]")
 
                 elif (
                     isinstance(last_msg, AIMessage)
@@ -186,7 +201,7 @@ def run() -> None:
                         _print_agent(text)
                         # restart status for potential reviewer node coming next
                         status.start()
-                        status.update("[tool.call]Reviewing plan...[/tool.call]")
+                        status.update("[tool.call]✦  Reviewing plan...[/tool.call]")
 
         _print_status(
             city=last_event.get("current_city"),
