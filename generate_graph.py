@@ -73,7 +73,7 @@ flowchart TD
 
 def render(mermaid_str: str, output: str = "graph.png") -> None:
     encoded = base64.urlsafe_b64encode(mermaid_str.encode("utf-8")).decode("ascii")
-    url = f"https://mermaid.ink/img/{encoded}?type=png&bgColor=ffffff"
+    url = f"https://mermaid.ink/img/{encoded}?type=png&bgColor=transparent"
     print("Rendering via mermaid.ink ...")
     resp = httpx.get(url, timeout=30, follow_redirects=True)
     resp.raise_for_status()
