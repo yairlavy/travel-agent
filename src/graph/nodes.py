@@ -161,15 +161,19 @@ def run_validator(state: AgentState) -> dict:
     """
     Security guardrail node — runs before Marco on every user message.
 
-    Checks for:
-      - Prompt injection attempts
-      - Out-of-scope requests (not travel related)
-      - Unsupported destinations (not in the database)
+    Two-layer validation strategy:
+      Layer 1 (primary): AI validator via Groq llama-3.1-8b-instant.
+                         Understands intent and catches creative injection
+                         attempts that regex cannot detect.
+      Layer 2 (fallback): Hardcoded InputValidator regex patterns.
+                          Used automatically when Groq is unavailable
+                          or times out.
 
     Writes validation_status into State so the router can decide
     whether to pass the message to Marco or terminate immediately.
     If blocked, injects a rejection AIMessage so the user sees a clear reason.
     """
+    from src.agents.ai_validator import ai_validate
     from src.agents.validator import validate_input
 
     messages = state.get("messages", [])
@@ -177,7 +181,14 @@ def run_validator(state: AgentState) -> dict:
         return {"validation_status": "approved"}
 
     last_content = getattr(messages[-1], "content", "")
-    result = validate_input(last_content)
+
+    # Layer 1: AI validator (Groq) — understands intent, not just keywords
+    result = ai_validate(last_content)
+
+    # Layer 2: Hardcoded fallback if Groq is unavailable
+    if result is None:
+        logger.info("Validator: using hardcoded fallback (Groq unavailable).")
+        result = validate_input(last_content)
 
     logger.info(
         "Validator: verdict=%s reason=%s", result.verdict, result.reason

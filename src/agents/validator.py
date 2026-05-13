@@ -95,45 +95,102 @@ class InputValidator:
 
     # Regex patterns that signal prompt injection
     _INJECTION_PATTERNS_RAW = [
-        r"ignore\s+(previous|all|your|the)\s+instructions?",
-        r"disregard\s+(all|previous|your|the)\s+instructions?",
+        # ignore / disregard — catches any combination of modifiers before the target word
+        r"ignore\s+(all\s+)?(previous\s+|your\s+|the\s+|above\s+)?(instructions?|prompts?|commands?|rules?|context)",
+        r"disregard\s+(all\s+)?(previous\s+|your\s+|the\s+)?(instructions?|prompts?|commands?|rules?|context)",
+
+        # "follow the next command / instruction / prompt"
+        r"follow\s+(the\s+)?(next|this|my|new|following)\s+(command|instruction|prompt|rule|order)",
+
+        # Style / personality change requests
+        r"answer\s+(me\s+)?(only\s+)?(in|using|with|like)\s+\w+",
+        r"respond\s+(only\s+)?(in|using|with|like)\s+\w+",
+        r"(speak|write|talk|communicate|reply)\s+(only\s+)?(in|using|like|as)\s+\w+",
+        r"change\s+(your\s+)?(tone|style|language|personality|character|voice|way\s+of)",
+        r"(from\s+now\s+on|starting\s+now|henceforth)\s+.*(speak|respond|answer|write|talk)",
+
+        # Role / identity injection
         r"new\s+system\s+prompt",
         r"your\s+new\s+role",
         r"\bact\s+as\s+(a|an|if)\b",
         r"pretend\s+(you\s+are|to\s+be)",
-        r"you\s+are\s+now\s+a",
-        r"\bjailbreak\b",
-        r"\bDAN\b",
-        r"do\s+anything\s+now",
-        r"what\s+are\s+your\s+(instructions?|rules?|prompt)",
-        r"(repeat|show|reveal|print|output)\s+(your\s+)?(system\s+)?(prompt|instructions?|rules?)",
-        r"forget\s+(everything|all|your\s+instructions?)",
-        r"override\s+(your|the)\s+(instructions?|prompt|rules?)",
-        r"(developer|god|admin|sudo|root)\s+mode",
-        r"bypass\s+(your|the)\s+(restrictions?|rules?|guidelines?|filters?)",
-        r"from\s+now\s+on\s+(you|act|be|ignore|forget)",
+        r"you\s+are\s+now\s+(a|an)\b",
         r"you\s+are\s+(actually|really|secretly|truly)\s+a",
         r"(switch|change|enter)\s+(to\s+)?(a\s+)?(different|new|unrestricted)\s+mode",
         r"simulate\s+(a|an)\s+.*(ai|assistant|bot|system)",
+
+        # Jailbreak keywords
+        r"\bjailbreak\b",
+        r"\bDAN\b",
+        r"do\s+anything\s+now",
+
+        # Reveal / override system
+        r"what\s+are\s+your\s+(instructions?|rules?|prompt|system)",
+        r"(repeat|show|reveal|print|output)\s+(your\s+)?(system\s+)?(prompt|instructions?|rules?)",
+        r"forget\s+(everything|all|your\s+(instructions?|rules?|prompts?))",
+        r"override\s+(your|the)\s+(instructions?|prompt|rules?|system)",
+        r"(developer|god|admin|sudo|root)\s+mode",
+        r"bypass\s+(your|the)\s+(restrictions?|rules?|guidelines?|filters?|safety)",
+        r"from\s+now\s+on\s+(you|act|be|ignore|forget)",
     ]
 
     # (pattern, topic_label) pairs for clearly off-topic content
     _OFF_TOPIC_PATTERNS_RAW = [
+        # Mathematics
         (r"\b(solve|calculate|compute|evaluate)\s+(this\s+)?(equation|math|formula|integral|derivative|sum|problem)", "mathematics"),
         (r"\b\d+\s*[\+\-\*\/\^]\s*\d+\b", "arithmetic"),
+
+        # Creative writing
         (r"\bwrite\s+(me\s+)?(a\s+)?(poem|essay|story|song|lyrics|novel|script|haiku|sonnet)", "creative writing"),
+
+        # Coding — explicit write/create requests
         (r"\b(write|generate|create|give me)\s+(some\s+)?(code|function|class|algorithm|script|program)\b", "coding"),
         (r"\b(debug|fix|review)\s+(this|my|the)\s+(code|function|script|program|bug)", "coding"),
+
+        # Coding — "how to" programming questions
+        (r"\bhow\s+(do\s+i|to|can\s+i)\s+(reverse|sort|search|traverse|implement|merge|split|flatten|parse|serialize)\s+(a\s+)?(linked\s+list|array|string|tree|graph|stack|queue|dict|list|tuple)", "coding"),
+        (r"\bhow\s+(do\s+i|to|can\s+i)\s+(write|code|build|create|make|implement)\s+(a\s+)?(function|class|loop|recursion|algorithm|api|server|database|query)", "coding"),
+
+        # Programming data structures and concepts (clearly non-travel)
+        (r"\b(linked\s+list|binary\s+tree|binary\s+search|hash\s+table|hash\s+map|depth.first|breadth.first|big.o\s+notation|time\s+complexity|space\s+complexity)\b", "computer science"),
+        (r"\b(recursion|polymorphism|inheritance|encapsulation|abstraction|object.oriented|functional\s+programming)\b", "computer science"),
+
+        # Programming language syntax
+        (r"\bin\s+(python|java(?:script)?|c\+\+|c#|ruby|golang|go|rust|php|swift|kotlin|typescript|scala|r\b)\b", "programming language"),
+        (r"\b(def\s+\w+|class\s+\w+|import\s+\w+|print\s*\(|console\.log|System\.out)\b", "code snippet"),
+
+        # General knowledge
         (r"\bwhat\s+is\s+the\s+(capital|population|president|prime\s+minister|gdp|area)\s+of\b", "general knowledge"),
         (r"\bwho\s+(is|was|invented|discovered|wrote|created|founded)\b", "general knowledge"),
+        (r"\bexplain\s+(to\s+me\s+)?(what|how|why)\s+(is|are|does|do)\s+(machine\s+learning|deep\s+learning|neural|quantum|blockchain|ai|llm)\b", "general knowledge"),
+
+        # Translation
         (r"\btranslate\s+(this|the|from|to|into)\b", "translation"),
+
+        # Games
         (r"\bplay\s+(a\s+)?(game|chess|quiz|trivia|riddle)\b", "games"),
+
+        # Finance
         (r"\b(stock|crypto|bitcoin|ethereum|forex)\s+(market|price|trading|chart)\b", "finance"),
+
+        # Cooking
         (r"\b(recipe|how\s+to\s+cook|how\s+to\s+bake|ingredient|dish)\b", "cooking"),
+
+        # Sports
         (r"\bsport(s)?\s+(score|result|match|standings|league)\b", "sports"),
+
+        # Medical
         (r"\b(diagnosis|symptom|medicine|prescription|disease|treatment)\b", "medical"),
+
+        # Legal
         (r"\b(law|legal\s+advice|is\s+it\s+legal|lawsuit|attorney)\b", "legal"),
+
+        # Philosophy/science
         (r"\bthe\s+(meaning\s+of\s+life|universe|everything|big\s+bang)\b", "philosophy/science"),
+
+        # Weather (the original bug)
+        (r"\b(weather|temperature|forecast|rain|snow|sunny|cloudy|humidity)\s+(in|at|for|today|tomorrow|right\s+now)\b", "weather"),
+        (r"\bwhat('s|\s+is)\s+the\s+weather\b", "weather"),
     ]
 
     # Travel-related keywords — any match overrides the off-topic check
