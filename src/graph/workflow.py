@@ -3,10 +3,10 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from src.graph.state import AgentState
 from src.graph.nodes import (
-    extract_metadata, call_model, circuit_breaker,
+    extract_metadata, run_validator, call_model, circuit_breaker,
     researcher_node, reviewer_node, build_tools_node,
 )
-from src.graph.router import route_intent, should_continue
+from src.graph.router import route_after_validator, should_continue
 
 """
 Graph topology
@@ -16,18 +16,22 @@ START
   ▼
 extract_metadata          ← resets counter, detects city/budget
   │
-  ▼ (conditional: route_intent)
-  ├─ [research query]  → researcher ──────────────────────────────→ END
+  ▼
+validator                 ← security guardrail (injection / scope / city check)
   │
-  └─ [plan / default]  → agent  ◄─────────────────────────────────┐
-                            │                                      │
-                            ├─ [tool_calls & count < MAX] → tools ┘  (loop)
-                            │
-                            ├─ [count >= MAX or repetition] → circuit_breaker → END
-                            │
-                            ├─ [final answer + city + 3+ tools] → reviewer → END
-                            │
-                            └─ [simple answer] → END
+  ├─ [blocked]            → END  (rejection message already injected)
+  │
+  ├─ [research query]     → researcher ──────────────────────────────→ END
+  │
+  └─ [approved + plan]    → agent  ◄────────────────────────────────┐
+                               │                                     │
+                               ├─ [tool_calls & count < MAX] → tools┘  (loop)
+                               │
+                               ├─ [count >= MAX or repetition] → circuit_breaker → END
+                               │
+                               ├─ [final answer + city + 5+ tools] → reviewer → END
+                               │
+                               └─ [simple answer] → END
 """
 
 
@@ -44,19 +48,21 @@ def build_graph(use_memory: bool = True):
     """
     builder = StateGraph(AgentState)
 
-    # ── Nodes ────────────────────────────────────────────────────────────────
+    # ── Nodes ─────────────────────────────────────────────────────────────────
     builder.add_node("extract_metadata", extract_metadata)
+    builder.add_node("validator", run_validator)
     builder.add_node("researcher", researcher_node)
     builder.add_node("agent", call_model)
     builder.add_node("tools", build_tools_node())
     builder.add_node("circuit_breaker", circuit_breaker)
     builder.add_node("reviewer", reviewer_node)
 
-    # ── Edges ─────────────────────────────────────────────────────────────────
+    # ── Edges ──────────────────────────────────────────────────────────────────
     builder.add_edge(START, "extract_metadata")
+    builder.add_edge("extract_metadata", "validator")
     builder.add_conditional_edges(
-        "extract_metadata", route_intent,
-        {"researcher": "researcher", "agent": "agent"},
+        "validator", route_after_validator,
+        {"researcher": "researcher", "agent": "agent", END: END},
     )
     builder.add_edge("researcher", END)
     builder.add_conditional_edges("agent", should_continue)

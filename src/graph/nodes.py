@@ -33,7 +33,7 @@ def _get_model():
     return _model
 
 
-# ── Node 1: Metadata Extraction 
+# ── Node 1: Metadata Extraction ──────────────────────────────────────────────
 
 def extract_metadata(state: AgentState) -> dict:
     """
@@ -66,7 +66,45 @@ def extract_metadata(state: AgentState) -> dict:
     return updates
 
 
-#  Node 2: Agent (LLM call) 
+# ── Node 2: Validator ─────────────────────────────────────────────────────────
+
+def run_validator(state: AgentState) -> dict:
+    """
+    Security guardrail node — runs before Marco on every user message.
+
+    Checks for:
+      - Prompt injection attempts
+      - Out-of-scope requests (not travel related)
+      - Unsupported destinations (not in the database)
+
+    Writes validation_status into State so the router can decide
+    whether to pass the message to Marco or terminate immediately.
+    If blocked, injects a rejection AIMessage so the user sees a clear reason.
+    """
+    from src.agents.validator import validate_input
+
+    messages = state.get("messages", [])
+    if not messages:
+        return {"validation_status": "approved"}
+
+    last_content = getattr(messages[-1], "content", "")
+    result = validate_input(last_content)
+
+    logger.info(
+        "Validator: verdict=%s reason=%s", result.verdict, result.reason
+    )
+
+    if not result.approved:
+        rejection = AIMessage(content=result.rejection_message)
+        return {
+            "validation_status": result.verdict.lower(),
+            "messages": [rejection],
+        }
+
+    return {"validation_status": "approved"}
+
+
+# ── Node 3: Agent (LLM call) ──────────────────────────────────────────────────
 
 def call_model(state: AgentState) -> dict:
     """
@@ -80,7 +118,7 @@ def call_model(state: AgentState) -> dict:
     messages = [SystemMessage(content=PLANNER_SYSTEM_PROMPT)] + state["messages"]
 
     max_retries = 2
-    
+
     for attempt in range(max_retries):
         try:
             response = _get_model().invoke(messages)
@@ -104,7 +142,7 @@ def call_model(state: AgentState) -> dict:
     return {"messages": [response], "tool_call_count": count}
 
 
-# ── Node 3: Circuit Breaker 
+# ── Node 4: Circuit Breaker ───────────────────────────────────────────────────
 
 def circuit_breaker(state: AgentState) -> dict:
     """
@@ -125,17 +163,16 @@ def circuit_breaker(state: AgentState) -> dict:
     return {"messages": [msg]}
 
 
-# ── Node 4: Researcher ───────────────────────────────────────────────────────
+# ── Node 5: Researcher ────────────────────────────────────────────────────────
 
 def researcher_node(state: AgentState) -> dict:
     """
     Lightweight data-lookup node — handles simple factual queries
     (e.g. "what hotels are in Tokyo?") by calling DB tools directly.
-    Routes here when route_intent detects a research-only question.
+    Routes here when route_after_validator detects a research-only question.
     Bypasses the full planning workflow to avoid unnecessary LLM calls.
     """
     from src.tools.db_tools import fetch_hotels, fetch_flights, fetch_activities
-    import json
 
     last_content = getattr(state["messages"][-1], "content", "").lower()
     city = state.get("current_city", "")
@@ -158,12 +195,12 @@ def researcher_node(state: AgentState) -> dict:
     return {"messages": [AIMessage(content=content)]}
 
 
-# ── Node 5: Reviewer ─────────────────────────────────────────────────────────
+# ── Node 6: Reviewer ──────────────────────────────────────────────────────────
 
 def reviewer_node(state: AgentState) -> dict:
     """
     Quality-control node — automatically critiques Marco's final travel plan.
-    Only runs when the agent produced a full plan (city detected + 3+ tool calls).
+    Only runs when the agent produced a full plan (city detected + 5+ tool calls).
     Appends a structured review to the conversation as a follow-up AIMessage.
     """
     from src.agents.reviewer import review_plan
