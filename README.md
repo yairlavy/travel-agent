@@ -229,8 +229,9 @@ Either guard fires the `circuit_breaker` node, which injects a graceful error me
 |---|---|---|
 | 1 | Gemini API + LangChain tool binding | Done |
 | 2 | Manual orchestration loop | Done |
-| **3** | **LangGraph StateGraph — autonomous agent** | **Current** |
-| 4 | SqliteSaver — persistent cross-session memory | Upcoming |
+| 3 | LangGraph StateGraph — autonomous agent | Done |
+| **4** | **SqliteSaver — persistent cross-session memory** | **Done** |
+| 5 | Plan-and-Execute pattern | Upcoming |
 
 ### Preparing for Session 4
 
