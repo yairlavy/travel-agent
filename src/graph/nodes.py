@@ -131,14 +131,31 @@ def circuit_breaker(state: AgentState) -> dict:
 def researcher_node(state: AgentState) -> dict:
     """
     Lightweight data-lookup node — handles simple factual queries
-    (e.g. "what hotels are in Tokyo?") without the full planning workflow.
+    (e.g. "what hotels are in Tokyo?") by calling DB tools directly.
     Routes here when route_intent detects a research-only question.
+    Bypasses the full planning workflow to avoid unnecessary LLM calls.
     """
-    from src.agents.researcher import research
-    last_content = getattr(state["messages"][-1], "content", "")
-    result = research(last_content)
-    content = result if isinstance(result, str) else str(result)
-    logger.info("Researcher node completed query.")
+    from src.tools.db_tools import fetch_hotels, fetch_flights, fetch_activities
+    import json
+
+    last_content = getattr(state["messages"][-1], "content", "").lower()
+    city = state.get("current_city", "")
+
+    if "hotel" in last_content and city:
+        result = fetch_hotels.invoke({"city": city})
+        label = f"Hotels in {city}"
+    elif "flight" in last_content and city:
+        result = fetch_flights.invoke({"origin": "TLV", "destination": city})
+        label = f"Flights from TLV to {city}"
+    elif "activit" in last_content and city:
+        result = fetch_activities.invoke({"city": city})
+        label = f"Activities in {city}"
+    else:
+        result = "Please specify hotels, flights, or activities along with a city name."
+        label = "Research"
+
+    content = f"**{label}:**\n{result}"
+    logger.info("Researcher node completed query for city=%s.", city or "unknown")
     return {"messages": [AIMessage(content=content)]}
 
 
