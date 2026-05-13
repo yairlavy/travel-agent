@@ -201,6 +201,10 @@ class InputValidator:
         "booking", "book", "ticket", "passport", "tour", "sightseeing",
         "cheapest", "budget", "cost", "price", "nights", "days",
         "plan", "help", "hi", "hello",
+        # Preference keywords — always travel-related
+        "prefer", "preference", "favourite", "favorite", "kosher", "vegan",
+        "vegetarian", "halal", "traveler", "travellers", "travelers", "passenger",
+        "flying", "fly",
     })
 
     # Compiled pattern caches
