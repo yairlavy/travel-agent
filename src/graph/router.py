@@ -48,7 +48,7 @@ def should_continue(state: AgentState) -> str:
     if hasattr(last, "tool_calls") and last.tool_calls:
         return "tools"
 
-    if count >= 3 and state.get("current_city"):
+    if count >= 5 and state.get("current_city"):
         return "reviewer"
 
     return END

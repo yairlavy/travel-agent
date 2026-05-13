@@ -173,41 +173,61 @@ def run() -> None:
             "web_search":          "🌐  Searching the web",
         }
 
-        with console.status("[tool.call]Marco is thinking...[/tool.call]", spinner="dots") as status:
-            for event in graph.stream(
-                {"messages": [("user", user_input)]},
-                config,
-                stream_mode="values",
-            ):
-                last_event = event
-                last_msg = event["messages"][-1]
-
-                if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
-                    labels = [
-                        _TOOL_LABELS.get(tc["name"], f"⚙  {tc['name']}")
-                        for tc in last_msg.tool_calls
-                    ]
-                    status.update(f"[tool.call]{' · '.join(labels)}...[/tool.call]")
-
-                elif (
-                    isinstance(last_msg, AIMessage)
-                    and last_msg.content
-                    and not getattr(last_msg, "tool_calls", None)
+        try:
+            with console.status("[tool.call]Marco is thinking...[/tool.call]", spinner="dots") as status:
+                for event in graph.stream(
+                    {"messages": [("user", user_input)]},
+                    config,
+                    stream_mode="values",
                 ):
-                    text = _extract_text(last_msg.content)
-                    if text and text not in seen_contents:
-                        seen_contents.add(text)
-                        status.stop()
-                        _print_agent(text)
-                        # restart status for potential reviewer node coming next
-                        status.start()
-                        status.update("[tool.call]✦  Reviewing plan...[/tool.call]")
+                    last_event = event
+                    last_msg = event["messages"][-1]
 
-        _print_status(
-            city=last_event.get("current_city"),
-            budget=last_event.get("total_budget"),
-            tool_count=last_event.get("tool_call_count", 0),
-        )
+                    if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
+                        labels = [
+                            _TOOL_LABELS.get(tc["name"], f"⚙  {tc['name']}")
+                            for tc in last_msg.tool_calls
+                        ]
+                        status.update(f"[tool.call]{' · '.join(labels)}...[/tool.call]")
+
+                    elif (
+                        isinstance(last_msg, AIMessage)
+                        and last_msg.content
+                        and not getattr(last_msg, "tool_calls", None)
+                    ):
+                        text = _extract_text(last_msg.content)
+                        if text and text not in seen_contents:
+                            seen_contents.add(text)
+                            status.stop()
+                            _print_agent(text)
+                            status.start()
+                            status.update("[tool.call]✦  Reviewing plan...[/tool.call]")
+
+            _print_status(
+                city=last_event.get("current_city"),
+                budget=last_event.get("total_budget"),
+                tool_count=last_event.get("tool_call_count", 0),
+            )
+
+        except Exception as e:
+            err = str(e)
+            if "429" in err or "RESOURCE_EXHAUSTED" in err or "quota" in err.lower():
+                import re
+                wait = re.search(r"retry in (\d+)", err)
+                wait_msg = f"Retry in {wait.group(1)}s." if wait else "Try again in a minute."
+                console.print(Panel(
+                    f"[yellow]You've hit the Gemini free-tier quota limit.\n{wait_msg}[/yellow]\n\n"
+                    "[dim]The free tier allows 20 requests/day and 10/minute.\n"
+                    "Wait a moment and try again, or use a simpler query.[/dim]",
+                    title="[red]Rate Limited[/red]",
+                    border_style="red",
+                ))
+            else:
+                console.print(Panel(
+                    f"[red]Unexpected error:[/red] {err[:300]}",
+                    title="[red]Error[/red]",
+                    border_style="red",
+                ))
 
         logger.info(
             "turn complete | city=%s | budget=%s | tools=%d",
