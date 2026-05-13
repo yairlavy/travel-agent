@@ -158,19 +158,40 @@ def update_preferences(state: AgentState) -> dict:
         updates["num_travelers"] = int(traveler_match.group(1))
         logger.info(f"Preference detected — travelers: {traveler_match.group(1)}")
 
-    # LLM-based extraction for any preference not covered above (e.g. aircraft
-    # type, seat preference, flight class, hotel rating, direct-only, etc.)
+    # LLM-based extraction for any preference not covered above
     raw_content = getattr(state["messages"][-1], "content", "")
     extra = _extract_preference_with_llm(raw_content)
     if extra:
         existing = state.get("travel_preferences", "") or ""
-        # Avoid duplicating the same preference if already stored
         if extra.lower() not in existing.lower():
             updates["travel_preferences"] = (
                 f"{existing}\n- {extra}".strip() if existing else f"- {extra}"
             )
             logger.info(f"Preference detected (LLM) — {extra}")
 
+    # Build a confirmation message so the agent never runs for a pure
+    # preference statement — update_preferences routes directly to summarizer.
+    saved = []
+    if updates.get("preferred_airline"):
+        saved.append(f"Airline: **{updates['preferred_airline']}**")
+    if updates.get("food_preference"):
+        saved.append(f"Food: **{updates['food_preference']}**")
+    if updates.get("num_travelers"):
+        saved.append(f"Travelers: **{updates['num_travelers']}**")
+    if updates.get("travel_preferences"):
+        last_extra = updates["travel_preferences"].strip().lstrip("- ")
+        saved.append(f"Additional: **{last_extra.split(chr(10))[0]}**")
+
+    if saved:
+        ack = "Got it! I've saved your preferences:\n" + "\n".join(f"- {s}" for s in saved)
+    else:
+        ack = (
+            "I didn't detect a specific preference. "
+            "Try mentioning your airline, food type, or number of travelers."
+        )
+
+    updates["messages"] = [AIMessage(content=ack)]
+    logger.info("update_preferences: acknowledged %d saved items.", len(saved))
     return updates
 
 

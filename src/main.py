@@ -273,6 +273,8 @@ def run() -> None:
                     # event = {node_name: {state_updates}}
                     node_name = next(iter(event))
                     node_data = event[node_name]
+                    if node_data is None:
+                        continue
 
                     # Merge state fields we care about for status bar
                     for key in ("current_city", "total_budget", "tool_call_count"):

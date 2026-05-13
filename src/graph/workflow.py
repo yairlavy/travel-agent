@@ -79,7 +79,7 @@ def build_graph():
     )
 
     builder.add_edge("recall", END)
-    builder.add_edge("update_preferences", "validator")
+    builder.add_edge("update_preferences", "summarizer")  # ack + done, no agent needed
 
     builder.add_conditional_edges(
         "validator", route_after_validator,
