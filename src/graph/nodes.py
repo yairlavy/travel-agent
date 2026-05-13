@@ -126,6 +126,44 @@ def circuit_breaker(state: AgentState) -> dict:
     return {"messages": [msg]}
 
 
+# ── Node 4: Validator ────────────────────────────────────────────────────────
+
+def run_validator(state: AgentState) -> dict:
+    """
+    Security guardrail node — runs before Marco on every user message.
+
+    Checks for:
+      - Prompt injection attempts
+      - Out-of-scope requests (not travel related)
+      - Unsupported destinations (not in the database)
+
+    Writes validation_status into State so the router can decide
+    whether to pass the message to Marco or terminate immediately.
+    If blocked, injects a rejection AIMessage so the user sees a clear reason.
+    """
+    from src.agents.validator import validate_input
+
+    messages = state.get("messages", [])
+    if not messages:
+        return {"validation_status": "approved"}
+
+    last_content = getattr(messages[-1], "content", "")
+    result = validate_input(last_content)
+
+    logger.info(
+        "Validator: verdict=%s reason=%s", result.verdict, result.reason
+    )
+
+    if not result.approved:
+        rejection = AIMessage(content=result.rejection_message)
+        return {
+            "validation_status": result.verdict.lower(),
+            "messages": [rejection],
+        }
+
+    return {"validation_status": "approved"}
+
+
 # ── Tool Node (prebuilt) ──────────────────────────────────────────────────────
 
 def build_tools_node():
