@@ -25,6 +25,24 @@ def route_intent(state: AgentState) -> str:
     return "agent"
 
 
+def route_after_validator(state: AgentState) -> str:
+    """
+    Conditional edge after the validator node.
+
+    If blocked → END immediately (rejection message already in State).
+    If approved → check whether it's a research-only query or a full plan request.
+    """
+    status = state.get("validation_status", "approved")
+    if status != "approved":
+        return END
+
+    last_content = getattr(state["messages"][-1], "content", "").lower()
+    for trigger in _RESEARCH_TRIGGERS:
+        if trigger in last_content:
+            return "researcher"
+    return "agent"
+
+
 def should_continue(state: AgentState) -> str:
     """
     Conditional edge function — decides the next node after the agent runs.
