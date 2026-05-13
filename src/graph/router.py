@@ -5,6 +5,19 @@ from src.utils.validators import detect_repetition
 MAX_TOOL_CALLS = 8
 
 
+def route_after_validator(state: AgentState) -> str:
+    """
+    Conditional edge after the validator node.
+
+    If validation_status is "approved" → continue to Marco (agent).
+    Any blocked verdict → END immediately (rejection message already in State).
+    """
+    status = state.get("validation_status", "approved")
+    if status == "approved":
+        return "agent"
+    return END
+
+
 def should_continue(state: AgentState) -> str:
     """
     Conditional edge function — decides the next node after the agent runs.
