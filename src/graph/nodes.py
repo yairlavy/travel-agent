@@ -172,27 +172,69 @@ def researcher_node(state: AgentState) -> dict:
     Routes here when route_after_validator detects a research-only question.
     Bypasses the full planning workflow to avoid unnecessary LLM calls.
     """
+    import json
     from src.tools.db_tools import fetch_hotels, fetch_flights, fetch_activities
 
     last_content = getattr(state["messages"][-1], "content", "").lower()
     city = state.get("current_city", "")
 
     if "hotel" in last_content and city:
-        result = fetch_hotels.invoke({"city": city})
+        raw = fetch_hotels.invoke({"city": city})
         label = f"Hotels in {city}"
+        content = _format_hotels(label, raw)
     elif "flight" in last_content and city:
-        result = fetch_flights.invoke({"origin": "TLV", "destination": city})
+        raw = fetch_flights.invoke({"origin": "TLV", "destination": city})
         label = f"Flights from TLV to {city}"
+        content = _format_flights(label, raw)
     elif "activit" in last_content and city:
-        result = fetch_activities.invoke({"city": city})
+        raw = fetch_activities.invoke({"city": city})
         label = f"Activities in {city}"
+        content = _format_activities(label, raw)
     else:
-        result = "Please specify hotels, flights, or activities along with a city name."
-        label = "Research"
+        content = "Please specify hotels, flights, or activities along with a city name."
 
-    content = f"**{label}:**\n{result}"
     logger.info("Researcher node completed query for city=%s.", city or "unknown")
     return {"messages": [AIMessage(content=content)]}
+
+
+def _format_hotels(label: str, raw: str) -> str:
+    import json
+    try:
+        items = json.loads(raw)
+    except (ValueError, TypeError):
+        return f"**{label}:**\n{raw}"
+    lines = [f"**{label}:**\n"]
+    for h in items:
+        stars = "★" * h.get("stars", 0)
+        lines.append(f"- **{h['name']}** {stars} — ${h['price_per_night']}/night")
+    return "\n".join(lines)
+
+
+def _format_flights(label: str, raw: str) -> str:
+    import json
+    try:
+        items = json.loads(raw)
+    except (ValueError, TypeError):
+        return f"**{label}:**\n{raw}"
+    if isinstance(items, dict):
+        items = [items]
+    lines = [f"**{label}:**\n"]
+    for f in items:
+        lines.append(f"- **{f['airline']}** ({f['flight_number']}) — ${f['price']}")
+    return "\n".join(lines)
+
+
+def _format_activities(label: str, raw: str) -> str:
+    import json
+    try:
+        items = json.loads(raw)
+    except (ValueError, TypeError):
+        return f"**{label}:**\n{raw}"
+    lines = [f"**{label}:**\n"]
+    for a in items:
+        price = f"${a['price']}" if a.get("price") else "Free"
+        lines.append(f"- **{a['name']}** ({a.get('category', '')}) — {price}")
+    return "\n".join(lines)
 
 
 # ── Node 6: Reviewer ──────────────────────────────────────────────────────────
