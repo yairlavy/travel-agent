@@ -2,8 +2,11 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
 from src.graph.state import AgentState
-from src.graph.nodes import extract_metadata, call_model, circuit_breaker, build_tools_node
-from src.graph.router import should_continue
+from src.graph.nodes import (
+    extract_metadata, call_model, circuit_breaker,
+    researcher_node, reviewer_node, build_tools_node,
+)
+from src.graph.router import route_intent, should_continue
 
 """
 Graph topology
@@ -11,16 +14,20 @@ Graph topology
 START
   │
   ▼
-extract_metadata          ← resets counter, detects city/budget (Node 1)
+extract_metadata          ← resets counter, detects city/budget
   │
-  ▼
-  agent  ◄────────────────────────────────────────────┐
-  │                                                   │
-  ├─ [tool_calls present & count < MAX] → tools ──────┘  (loop)
+  ▼ (conditional: route_intent)
+  ├─ [research query]  → researcher ──────────────────────────────→ END
   │
-  ├─ [count >= MAX or repetition]       → circuit_breaker → END
-  │
-  └─ [no tool_calls]                    → END
+  └─ [plan / default]  → agent  ◄─────────────────────────────────┐
+                            │                                      │
+                            ├─ [tool_calls & count < MAX] → tools ┘  (loop)
+                            │
+                            ├─ [count >= MAX or repetition] → circuit_breaker → END
+                            │
+                            ├─ [final answer + city + 3+ tools] → reviewer → END
+                            │
+                            └─ [simple answer] → END
 """
 
 
@@ -39,16 +46,23 @@ def build_graph(use_memory: bool = True):
 
     # ── Nodes ────────────────────────────────────────────────────────────────
     builder.add_node("extract_metadata", extract_metadata)
+    builder.add_node("researcher", researcher_node)
     builder.add_node("agent", call_model)
     builder.add_node("tools", build_tools_node())
     builder.add_node("circuit_breaker", circuit_breaker)
+    builder.add_node("reviewer", reviewer_node)
 
     # ── Edges ─────────────────────────────────────────────────────────────────
-    builder.add_edge(START, "extract_metadata")          # always start here
-    builder.add_edge("extract_metadata", "agent")        # fixed: metadata → brain
-    builder.add_conditional_edges("agent", should_continue)  # branch based on output
-    builder.add_edge("tools", "agent")                   # loop back after tool execution
-    builder.add_edge("circuit_breaker", END)             # safety exit
+    builder.add_edge(START, "extract_metadata")
+    builder.add_conditional_edges(
+        "extract_metadata", route_intent,
+        {"researcher": "researcher", "agent": "agent"},
+    )
+    builder.add_edge("researcher", END)
+    builder.add_conditional_edges("agent", should_continue)
+    builder.add_edge("tools", "agent")
+    builder.add_edge("circuit_breaker", END)
+    builder.add_edge("reviewer", END)
 
     checkpointer = MemorySaver() if use_memory else None
     return builder.compile(checkpointer=checkpointer)
