@@ -1,7 +1,7 @@
-    # AI Travel Planner — Agentic Travel Planner
+# AI Travel Planner — Agentic Travel Planner
 
-An autonomous travel-planning system built with **LangGraph** and **Gemini 2.5 Flash**.  
-The agent reasons over a local SQLite database, calls specialised tools, detects infinite loops, and critiques its own output through a dedicated reviewer agent.
+An autonomous travel-planning system built with **LangGraph**, **Gemini 2.5 Flash** (or **Groq**), and **SQLite**.
+The agent plans full trips, remembers user preferences across sessions, validates every input with an AI-powered security layer, and critiques its own plans in admin mode.
 
 ---
 
@@ -11,10 +11,10 @@ The agent reasons over a local SQLite database, calls specialised tools, detects
 ╔══════════════════════════════════════════════════════════════════╗
 ║                        smart-travel-agent                        ║
 ╠══════════════════════════════════════════════════════════════════╣
-║  src/agents/   "The Brains"   — prompts, model configs           ║
-║  src/tools/    "The Hands"    — SQL queries, cost calc, search   ║
+║  src/agents/   "The Brains"    — LLM configs, prompts, security  ║
+║  src/tools/    "The Hands"     — SQL queries, cost calc, search  ║
 ║  src/graph/    "The Nervous System" — LangGraph state & flow     ║
-║  src/utils/    Engineering    — DB init, logging, validators     ║
+║  src/utils/    Engineering     — DB init, logging, loop guards   ║
 ╚══════════════════════════════════════════════════════════════════╝
 ```
 
@@ -24,75 +24,99 @@ The agent reasons over a local SQLite database, calls specialised tools, detects
 START
   │
   ▼
-extract_metadata          ← Node 1: detect city/budget, reset tool counter
+extract_metadata          ← resets counter, detects city & budget
   │
-  ▼
-  agent  ◄────────────────────────────────────────────────────────┐
-  │                                                               │
-  ├─ tool_calls && count < 8  ──►  tools (ToolNode)  ────────────┘
-  │
-  ├─ count ≥ 8  OR  repeated identical call  ──►  circuit_breaker  ──►  END
-  │
-  └─ no tool_calls  ──►  END  (final answer)
+  ▼  route_after_metadata (conditional edge)
+  ├─ recall query       ──► recall_node ──────────────────────────► END
+  ├─ preference stated  ──► update_preferences ──► validator
+  └─ everything else    ──► validator
+                               │
+                    route_after_validator
+                               │
+              ┌────────────────┼───────────────┐
+              ▼                ▼               ▼
+           blocked         researcher        agent  ◄────────┐
+            END               END              │             │
+                                    should_continue          │
+                                         │                   │
+                          ┌──────────────┼──────────────┐    │
+                          ▼              ▼              ▼    │
+                    circuit_breaker   tools ───────────────── ┘
+                         END         (loop)
+                                         │
+                              ┌──────────┴──────────┐
+                              ▼                     ▼
+                  is_admin + 5+ tools          simple answer
+                              │                     │
+                           reviewer                 │
+                              └──────────┬──────────┘
+                                         ▼
+                                     summarizer
+                                         │
+                                        END
+                                         │
+                               SqliteSaver auto-saves
+                               full State → checkpoints.db
 ```
+
+### Node Reference
 
 | Node | File | Purpose |
 |---|---|---|
-| `extract_metadata` | `src/graph/nodes.py` | Pre-processing — city/budget detection, counter reset |
-| `agent` | `src/graph/nodes.py` | Core LLM call — decides tool vs. final answer |
-| `tools` | `src/graph/nodes.py` | Prebuilt `ToolNode` — executes all bound tools |
-| `circuit_breaker` | `src/graph/nodes.py` | Safety — fires when loop guard triggers |
-
-### Edge Logic (`src/graph/router.py`)
-
-```python
-def should_continue(state) -> str:
-    if count >= MAX_TOOL_CALLS:    return "circuit_breaker"
-    if detect_repetition(messages): return "circuit_breaker"
-    if last_msg.tool_calls:         return "tools"
-    return END
-```
+| `extract_metadata` | `nodes.py` | Resets counter, detects city & budget from message |
+| `update_preferences` | `nodes.py` | Saves airline, food, traveler count + LLM-extracted free-form prefs |
+| `recall` | `nodes.py` | Answers memory questions directly from State — no LLM call |
+| `validator` | `nodes.py` + `ai_validator.py` | Two-layer security: AI (Groq) → hardcoded regex fallback |
+| `researcher` | `nodes.py` | Fast DB-only lookups for simple queries — no LLM call |
+| `agent` | `nodes.py` | Core LLM call — decides tools vs. final answer |
+| `tools` | `nodes.py` | Prebuilt `ToolNode` — executes all 9 bound tools |
+| `circuit_breaker` | `nodes.py` | Safety — fires on loop detection or tool count cap |
+| `reviewer` | `nodes.py` + `reviewer.py` | Scores and critiques plans — admin sessions only |
+| `summarizer` | `nodes.py` | Compact memory — compresses history > 10 messages |
 
 ---
 
 ## Project Structure
 
 ```
-smart-travel-agent/
+travel-agent/
 ├── .github/
 │   └── workflows/ci.yml          # GitHub Actions — runs test_tools.py on every push
 ├── data/
-│   ├── travel_agency.db          # SQLite (generated by db_init — not tracked in git)
-│   ├── initial_data.json         # Original JSON data from Session 1–2
-│   └── checkpoints.db            # SqliteSaver persistence (Session 4, auto-created)
+│   ├── travel_agency.db          # SQLite travel data (generated by db_init)
+│   ├── initial_data.json         # Original seed data
+│   └── checkpoints.db            # SqliteSaver — persistent session memory
 ├── src/
 │   ├── agents/
-│   │   ├── base.py               # Gemini model factory (shared by all agents)
-│   │   ├── planner.py            # PLANNER_SYSTEM_PROMPT — Marco's personality & rules
+│   │   ├── base.py               # LLM factory — supports Gemini and Groq
+│   │   ├── planner.py            # Marco's system prompt and identity rules
 │   │   ├── researcher.py         # Lightweight data-only research agent
-│   │   └── reviewer.py           # Self-correction: scores and critiques plans
+│   │   ├── reviewer.py           # Plan reviewer — scores & critiques
+│   │   ├── validator.py          # Hardcoded regex validator (fallback layer)
+│   │   └── ai_validator.py       # AI validator via Groq (primary layer)
 │   ├── tools/
 │   │   ├── __init__.py           # ALL_TOOLS list — single import for graph binding
 │   │   ├── db_tools.py           # SQL tools: flights, hotels, activities, visa
 │   │   ├── calc_tools.py         # calculate_trip_cost
 │   │   └── search_tools.py       # web_search via Tavily (optional)
 │   ├── graph/
-│   │   ├── state.py              # AgentState TypedDict
-│   │   ├── nodes.py              # extract_metadata, call_model, circuit_breaker
-│   │   ├── router.py             # should_continue — conditional edge logic
-│   │   └── workflow.py           # StateGraph builder & compiled graph singleton
+│   │   ├── state.py              # AgentState TypedDict — all persisted fields
+│   │   ├── nodes.py              # All 10 node functions
+│   │   ├── router.py             # Conditional edge logic
+│   │   └── workflow.py           # StateGraph builder + SqliteSaver
 │   ├── utils/
 │   │   ├── db_init.py            # Create + populate travel_agency.db
 │   │   ├── logger.py             # Structured logger factory
-│   │   └── validators.py         # detect_repetition — loop detection
-│   └── main.py                   # Interactive CLI loop
+│   │   └── validators.py         # detect_repetition — loop guard
+│   └── main.py                   # Rich terminal UI — session ID, banner, streaming
 ├── tests/
-│   ├── test_connection.py        # Gemini API connectivity check
-│   └── test_tools.py             # 15 integration tests against the real SQLite DB
-├── run.py                        # Convenience launcher: python run.py
-├── .env.example                  # Copy to .env and add your keys
-├── requirements.txt
-└── README.md
+│   ├── test_connection.py        # API connectivity check
+│   └── test_tools.py             # Integration tests against the real SQLite DB
+├── graph.png                     # Auto-generated graph diagram
+├── generate_graph.py             # Regenerates graph.png from current workflow
+├── run.py                        # Launcher: python run.py
+├── .env.example                  # Copy to .env and fill in your keys
+└── requirements.txt
 ```
 
 ---
@@ -103,18 +127,20 @@ smart-travel-agent/
 
 ```bash
 git clone <repo-url>
-cd smart-travel-agent
+cd travel-agent
 cp .env.example .env
-# Edit .env and add your GOOGLE_API_KEY
+# Edit .env — add your API keys (see Environment Variables below)
 ```
 
-### 2. Install dependencies
+### 2. Create virtual environment & install dependencies
 
 ```bash
+python -m venv taenv
+taenv\Scripts\activate      # Windows
+# source taenv/bin/activate  # Mac/Linux
+
 pip install -r requirements.txt
 ```
-
-> **Tip:** Use a virtual environment: `python -m venv .venv && source .venv/bin/activate`
 
 ### 3. Initialise the database (one-time)
 
@@ -122,7 +148,7 @@ pip install -r requirements.txt
 python -m src.utils.db_init
 ```
 
-This creates `data/travel_agency.db` with flights, hotels, activities, and visa data.
+Creates `data/travel_agency.db` with flights, hotels, activities, and visa data for 5 cities.
 
 ### 4. Run the agent
 
@@ -136,37 +162,45 @@ python run.py
 
 ```
 ╔══════════════════════════════════════════════════════════╗
-║        AI Travel Planner  •  LangGraph + Gemini          ║
-║  Commands: 'review' = critique last plan | 'exit' = quit ║
+║     AI Travel Planner  •  LangGraph + Gemini/Groq        ║
+║     Destinations: Paris · London · Tokyo · NY · Berlin   ║
 ╚══════════════════════════════════════════════════════════╝
 
-Supported cities: Paris · London · Tokyo · New York · Berlin
+Enter your session ID (press Enter for default): nick_01
+  Session: nick_01 — memory will be saved and restored automatically.
 
-You: Plan a 5-day trip from TLV to Paris with a budget of $1500
-  [calling: fetch_flights]
-  [calling: fetch_hotels]
-  [calling: fetch_activities]
-  [calling: calculate_trip_cost]
-  [calling: get_visa_requirement]
-
-Agent: Here's your 5-day Paris itinerary ...
-
-You: review
-Reviewer:
-Score: 8/10
-...
+You: I prefer El Al, eat kosher food, travelling with 2 people
+You: I prefer Airbus planes for safety
+You: Plan a 5-day trip to Paris under $2000
+You: what are my preferences?
+You: exit
 ```
+
+### Session IDs
+
+Each session ID maps to a separate persistent conversation in `data/checkpoints.db`.
+Using the same ID across restarts resumes the conversation with full memory.
+
+| Session type | ID format | Behaviour |
+|---|---|---|
+| Regular | `nick_01`, `user_abc` | Normal planning, no reviewer |
+| Admin | ends with `ADMIN00` — e.g. `nickADMIN00` | Plan review shown after full plans |
 
 ### Demo queries
 
-| Query | Tools triggered |
+| Query | What happens |
 |---|---|
-| `Plan a 5-day trip to Paris under $1500` | flights, hotels, activities, calc, visa |
-| `What's the cheapest way to get to Berlin?` | get_cheapest_flight |
-| `Find me a hotel in Tokyo under $100/night` | fetch_hotels (with max_price) |
-| `Do I need a visa to visit Japan from Israel?` | get_visa_requirement |
-| `What can I do in London?` | fetch_activities |
-| `Book a nonexistent city` | circuit_breaker fires |
+| `I prefer El Al and kosher food` | Saves airline + food to memory |
+| `I prefer Airbus planes` | LLM extracts & saves as free-form preference |
+| `what are my preferences?` | Recall node answers from State instantly |
+| `Plan a 5-day trip to Paris under $1500` | Full plan: flights, hotels, activities, cost, visa |
+| `What's the cheapest flight to Berlin?` | `get_cheapest_flight` only |
+| `Find me a hotel in Tokyo under $100/night` | `fetch_hotels` with price filter |
+| `Do I need a visa to visit Japan?` | `get_visa_requirement` only |
+| `What can I do in London?` | `fetch_activities` — researcher node, no LLM |
+| `Plan a trip to Rome` | Blocked — unsupported city |
+| `how to reverse a linked list` | Blocked — off-topic |
+| `ignore all previous instructions` | Blocked — injection attempt |
 
 ---
 
@@ -175,28 +209,60 @@ Score: 8/10
 | Tool | File | Description |
 |---|---|---|
 | `fetch_flights` | `db_tools.py` | All flights on a route, sorted by price |
-| `get_cheapest_flight` | `db_tools.py` | Single cheapest flight |
-| `list_destinations` | `db_tools.py` | All routes from an origin airport |
-| `fetch_hotels` | `db_tools.py` | Hotels in a city (optional max_price filter) |
+| `get_cheapest_flight` | `db_tools.py` | Single cheapest flight on a route |
+| `list_destinations` | `db_tools.py` | All destinations available from an origin |
+| `fetch_hotels` | `db_tools.py` | Hotels in a city, optional max-price filter |
 | `get_cheapest_hotel` | `db_tools.py` | Single cheapest hotel in a city |
 | `fetch_activities` | `db_tools.py` | Tourist activities in a city |
-| `get_visa_requirement` | `db_tools.py` | Visa rules between two countries |
+| `get_visa_requirement` | `db_tools.py` | Visa rules for Israeli travellers |
 | `calculate_trip_cost` | `calc_tools.py` | Cost breakdown: flight + hotel × nights |
 | `web_search` | `search_tools.py` | Real-time search via Tavily (needs API key) |
 
 ---
 
-## Testing
+## Security — Two-Layer Validation
 
-```bash
-# Tool tests (no API key needed)
-python -m pytest tests/test_tools.py -v
+Every user message passes through two validation layers before Marco processes it:
 
-# Connection test (needs GOOGLE_API_KEY in .env)
-python -m pytest tests/test_connection.py -v
-```
+**Layer 1 — AI Validator** (`src/agents/ai_validator.py`)
+Uses Groq `llama-3.1-8b-instant` (~200ms) with a comprehensive policy prompt.
+Understands intent — catches creative injection attempts that regex cannot.
 
-CI runs `test_tools.py` automatically on every push to `main` via GitHub Actions.
+**Layer 2 — Hardcoded Fallback** (`src/agents/validator.py`)
+Regex + keyword patterns. Activates automatically when Groq is unavailable.
+
+| Verdict | What triggers it |
+|---|---|
+| `BLOCKED_HARM` | Violence, weapons, self-harm, hacking, fraud, abuse |
+| `BLOCKED_INJECTION` | Ignore instructions, act-as, style/persona changes, DAN |
+| `BLOCKED_SCOPE` | Coding, weather, math, cooking, sports, medical, legal |
+| `BLOCKED_CITY` | Destinations outside the 5 supported cities |
+
+Session IDs are also validated — format check (alphanumeric + `_` `-`, max 50 chars) plus a word-level blacklist.
+
+---
+
+## Memory & Persistence
+
+### Short-term memory
+The `messages` list in `AgentState` holds the current conversation context.
+
+### Long-term memory (across restarts)
+`SqliteSaver` writes a full State snapshot to `data/checkpoints.db` after every node.
+Restored automatically when the same `thread_id` is used on next launch.
+
+### Compact memory
+`summarizer_node` runs after every completed turn. When message history exceeds 10 messages it compresses older messages into a bullet-point summary stored in `conversation_summary`. `call_model` then sends only the last 8 messages to the LLM, keeping context windows lean.
+
+### User preferences (persisted)
+Preferences are stored in `AgentState` and saved to `checkpoints.db`:
+
+| Field | Detected by | Example |
+|---|---|---|
+| `preferred_airline` | Hardcoded airline name list | `El Al`, `Emirates` |
+| `food_preference` | Hardcoded food keyword list | `kosher`, `vegan` |
+| `num_travelers` | Regex number + traveler word | `2 people` |
+| `travel_preferences` | Groq LLM free-form extraction | `Prefers Airbus aircraft`, `Direct flights only` |
 
 ---
 
@@ -204,22 +270,69 @@ CI runs `test_tools.py` automatically on every push to `main` via GitHub Actions
 
 ```python
 class AgentState(TypedDict):
-    messages: Annotated[list, add_messages]  # full conversation history
+    messages: Annotated[list, add_messages]  # conversation history
     current_city: str                         # last detected destination
     total_budget: float                       # last detected budget (USD)
     tool_call_count: int                      # resets each turn; guards loops
+    validation_status: str                    # approved | blocked_*
+    preferred_airline: str                    # persisted across sessions
+    food_preference: str                      # persisted across sessions
+    num_travelers: int                        # persisted across sessions
+    travel_preferences: str                   # free-form LLM-extracted prefs
+    is_admin: bool                            # True when session ends with ADMIN00
+    conversation_summary: str                 # compact history summary
 ```
 
 ---
 
-## Infinite Loop Protection
+## Loop Protection
 
-Two independent guards live in `src/graph/router.py` and `src/utils/validators.py`:
+Two independent guards prevent infinite tool-call loops:
 
-1. **Hard cap** — `tool_call_count >= 8` routes to `circuit_breaker`.
-2. **Repetition detection** — `detect_repetition()` checks if the same tool was called with identical arguments more than once in the current message history.
+1. **Hard cap** — `tool_call_count >= 8` routes to `circuit_breaker`
+2. **Repetition detection** — `detect_repetition()` checks if the same tool was called with identical arguments in the current turn (current-turn only, not full history — avoids false positives with SqliteSaver)
 
-Either guard fires the `circuit_breaker` node, which injects a graceful error message and terminates the run cleanly.
+---
+
+## LLM Provider
+
+The project supports two providers, switchable via `.env` with no code changes:
+
+```bash
+# Use Gemini (default)
+LLM_PROVIDER=gemini
+
+# Use Groq (unlimited free tier, good for testing)
+LLM_PROVIDER=groq
+```
+
+Groq is also used independently for the AI validator and free-form preference extraction — always available regardless of the main provider setting.
+
+---
+
+## Testing
+
+```bash
+# Tool integration tests (no API key needed)
+python -m pytest tests/test_tools.py -v
+
+# API connectivity test (needs key in .env)
+python -m pytest tests/test_connection.py -v
+```
+
+CI runs `test_tools.py` automatically on every push via GitHub Actions.
+
+---
+
+## Environment Variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `LLM_PROVIDER` | No | `gemini` (default) or `groq` |
+| `GOOGLE_API_KEY` | When using Gemini | Google AI Studio key |
+| `GROQ_API_KEY` | When using Groq (also for AI validator) | console.groq.com — free tier |
+| `LLM_MODEL` | No | Override model name |
+| `TAVILY_API_KEY` | No | Enables `web_search` tool |
 
 ---
 
@@ -228,33 +341,7 @@ Either guard fires the `circuit_breaker` node, which injects a graceful error me
 | Session | Topic | Status |
 |---|---|---|
 | 1 | Gemini API + LangChain tool binding | Done |
-| 2 | Manual orchestration loop | Done |
+| 2 | Manual tool orchestration | Done |
 | 3 | LangGraph StateGraph — autonomous agent | Done |
-| **4** | **SqliteSaver — persistent cross-session memory** | **Done** |
-| 5 | Plan-and-Execute pattern | Upcoming |
-
-### Preparing for Session 4
-
-To add persistent memory, replace the `MemorySaver` in `src/graph/workflow.py`:
-
-```python
-# Current (in-memory, lost on restart)
-from langgraph.checkpoint.memory import MemorySaver
-checkpointer = MemorySaver()
-
-# Session 4 (persistent across restarts)
-from langgraph.checkpoint.sqlite import SqliteSaver
-checkpointer = SqliteSaver.from_conn_string("data/checkpoints.db")
-```
-
-The `thread_id` in `config` separates different users or conversations.
-
----
-
-## Environment Variables
-
-| Variable | Required | Description |
-|---|---|---|
-| `GOOGLE_API_KEY` | Yes | Google AI Studio API key |
-| `TAVILY_API_KEY` | No | Enables `web_search` tool |
-| `LLM_MODEL` | No | Override model (default: `gemini-2.5-flash`) |
+| 4 | SqliteSaver — persistent cross-session memory | Done |
+| **5** | **Plan-and-Execute pattern** | **Upcoming** |
