@@ -91,7 +91,6 @@ def call_model(state: AgentState) -> dict:
                 match = _RETRY_PATTERN.search(err)
                 wait = int(float(match.group(1))) + 3 if match else 30
                 logger.warning(f"Rate limited — waiting {wait}s (attempt {attempt + 1}/{max_retries})")
-                print(f"\n  [rate limited — retrying in {wait}s...]", flush=True)
                 time.sleep(wait)
             else:
                 raise
